@@ -1,0 +1,208 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../state/app_state.dart';
+import 'match_screen.dart';
+
+class RequestScreen extends StatefulWidget {
+  final AppState appState;
+  final String energy;
+
+  const RequestScreen({super.key, required this.appState, required this.energy});
+
+  @override
+  State<RequestScreen> createState() => _RequestScreenState();
+}
+
+class _RequestScreenState extends State<RequestScreen> {
+  String _activity = 'walk';
+  String _mode = 'one_to_one';
+  int _durationMin = 20;
+  int _radiusM = 1000;
+  bool _loading = false;
+
+  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+
+  Future<void> _submit() async {
+    final isSv = widget.appState.locale.languageCode == 'sv';
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isSv ? 'Inte inloggad' : 'Not signed in')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      await Supabase.instance.client.from('session_requests').insert({
+        'user_id': user.id,
+        'activity': _activity,
+        'mode': _mode,
+        'duration_min': _durationMin,
+        'radius_m': _radiusM,
+        'energy': widget.energy,
+      });
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatchScreen(appState: widget.appState),
+        ),
+      );
+    } on PostgrestException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isSv ? 'Något gick fel' : 'Something went wrong')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSv = widget.appState.locale.languageCode == 'sv';
+
+    return Scaffold(
+      appBar: AppBar(title: Text(isSv ? 'Välj aktivitet' : 'Choose activity')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _t('What do you want to do?', 'Vad vill du göra?'),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+
+            const _Segment(title: 'Activity'),
+            const SizedBox(height: 8),
+            _ChoiceRow(
+              options: [
+                _ChoiceOption(value: 'walk', label: _t('Walk', 'Promenad')),
+                _ChoiceOption(value: 'coffee', label: _t('Coffee', 'Kaffe')),
+                _ChoiceOption(value: 'codo', label: _t('Co-do', 'Co-do')),
+              ],
+              selected: _activity,
+              onChanged: (v) => setState(() => _activity = v),
+            ),
+
+            const SizedBox(height: 18),
+
+            _Segment(title: _t('Mode', 'Läge')),
+            const SizedBox(height: 8),
+            _ChoiceRow(
+              options: [
+                _ChoiceOption(value: 'one_to_one', label: _t('1:1', '1:1')),
+                _ChoiceOption(value: 'group', label: _t('Group', 'Grupp')),
+              ],
+              selected: _mode,
+              onChanged: (v) => setState(() => _mode = v),
+            ),
+
+            const SizedBox(height: 18),
+
+            _Segment(title: _t('Duration', 'Längd')),
+            const SizedBox(height: 8),
+            _ChoiceRow(
+              options: const [
+                _ChoiceOption(value: '10', label: '10m'),
+                _ChoiceOption(value: '20', label: '20m'),
+                _ChoiceOption(value: '30', label: '30m'),
+                _ChoiceOption(value: '60', label: '60m'),
+              ],
+              selected: _durationMin.toString(),
+              onChanged: (v) => setState(() => _durationMin = int.parse(v)),
+            ),
+
+            const SizedBox(height: 18),
+
+            _Segment(title: _t('Radius', 'Radie')),
+            const SizedBox(height: 8),
+            _ChoiceRow(
+              options: const [
+                _ChoiceOption(value: '500', label: '500m'),
+                _ChoiceOption(value: '1000', label: '1km'),
+                _ChoiceOption(value: '3000', label: '3km'),
+              ],
+              selected: _radiusM.toString(),
+              onChanged: (v) => setState(() => _radiusM = int.parse(v)),
+            ),
+
+            const SizedBox(height: 22),
+
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: _loading ? null : _submit,
+                child: Text(_loading ? _t('Saving…', 'Sparar…') : _t('Continue', 'Fortsätt')),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            Text(
+              _t(
+                'We’ll only suggest public places for first meetups.',
+                'Vi föreslår bara offentliga platser för första träffar.',
+              ),
+              style: const TextStyle(color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Segment extends StatelessWidget {
+  final String title;
+  const _Segment({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600));
+  }
+}
+
+class _ChoiceOption {
+  final String value;
+  final String label;
+  const _ChoiceOption({required this.value, required this.label});
+}
+
+class _ChoiceRow extends StatelessWidget {
+  final List<_ChoiceOption> options;
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  const _ChoiceRow({
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: options.map((o) {
+        final isSelected = o.value == selected;
+        return ChoiceChip(
+          label: Text(o.label),
+          selected: isSelected,
+          onSelected: (_) => onChanged(o.value),
+        );
+      }).toList(),
+    );
+  }
+}

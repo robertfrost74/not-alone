@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "389483346789",
+    "project_id": "not-alone-1fc85",
+    "storage_bucket": "not-alone-1fc85.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389483346789:android:ace6df9e5fec4d6f207f8c",
+        "android_client_info": {
+          "package_name": "com.example.not_alone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBKHfioYq7ZBhrdENQiaMZceg8QbEcjpE4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
