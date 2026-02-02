@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 
@@ -23,53 +24,63 @@ class _MatchScreenState extends State<MatchScreen> {
   }) async {
     final lang = widget.appState.locale.languageCode;
 
-    // This calls your deployed Supabase Edge Function:
+    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    if (anonKey.isEmpty) {
+      throw Exception('Missing SUPABASE_ANON_KEY (dart-define).');
+    }
+
     final res = await Supabase.instance.client.functions.invoke(
       'invite-writer',
+      headers: {
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
       body: {
         'language': lang,
-        'activity': activity, // 'walk' | 'coffee' | 'codo'
+        'activity': activity, // walk|coffee|codo
         'duration': duration,
       },
     );
 
-    // functions.invoke returns a FunctionResponse with .data
     final data = res.data;
+    if (data == null) throw Exception('No data from function');
 
-    if (data == null) {
-      throw Exception('No data from function');
-    }
-
-    // Depending on version, data can be Map already or JSON string.
     final decoded = data is String ? jsonDecode(data) : data;
+    if (decoded is! Map<String, dynamic>) throw Exception('Unexpected response format');
 
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('Unexpected response format');
-    }
-
-    final ok = decoded['ok'] == true;
-    if (!ok) {
+    if (decoded['ok'] != true) {
       throw Exception(decoded['error']?.toString() ?? 'Function failed');
     }
 
     final suggestions = decoded['suggestions'];
-    if (suggestions is! List) {
-      throw Exception('No suggestions returned');
-    }
+    if (suggestions is! List) throw Exception('No suggestions returned');
 
     return suggestions.map((e) => e.toString()).toList();
+  }
+
+  Future<void> _saveInvite({
+    required String activity,
+    required int duration,
+    required String language,
+    required String text,
+  }) async {
+    await Supabase.instance.client.from('sent_invites').insert({
+      'user_id': Supabase.instance.client.auth.currentUser?.id,
+      'activity': activity,
+      'duration': duration,
+      'language': language,
+      'invite_text': text,
+    });
   }
 
   Future<void> _onInvitePressed({
     required String activity,
     required int duration,
   }) async {
-    final isSv = widget.appState.locale.languageCode == 'sv';
-
     setState(() => _loading = true);
+
     try {
       final suggestions = await _fetchInvites(activity: activity, duration: duration);
-
       if (!mounted) return;
 
       await showModalBottomSheet<void>(
@@ -77,6 +88,9 @@ class _MatchScreenState extends State<MatchScreen> {
         showDragHandle: true,
         isScrollControlled: true,
         builder: (context) {
+          final isSv = widget.appState.locale.languageCode == 'sv';
+          final lang = widget.appState.locale.languageCode;
+
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -89,22 +103,34 @@ class _MatchScreenState extends State<MatchScreen> {
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
-                  ...suggestions.map((s) => _InviteTile(
-                        text: s,
-                        onTap: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            SnackBar(
-                              content: Text(isSv ? 'Kopierat ✅ (nästa steg: skicka)' : 'Copied ✅ (next: send)'),
-                            ),
-                          );
-                        },
-                      )),
+                  ...suggestions.map(
+                    (s) => _InviteTile(
+                      text: s,
+                      activity: activity,
+                      duration: duration,
+                      onTap: () async {
+                        await Clipboard.setData(ClipboardData(text: s));
+
+                        await _saveInvite(
+                          activity: activity,
+                          duration: duration,
+                          language: lang,
+                          text: s,
+                        );
+
+                        if (!mounted) return;
+
+                        // Close bottom sheet and open Meet mode
+                        Navigator.pop(context);
+                        Navigator.pushNamed(this.context, '/meet');
+                      },
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     isSv
-                        ? 'Nästa steg bygger vi: “one-tap send” + “I’m here” + timer.'
-                        : 'Next we’ll build: one-tap send + I’m here + timer.',
+                        ? 'Nästa steg: Meet mode (Jag är här + timer).'
+                        : 'Next: Meet mode (I’m here + timer).',
                     style: const TextStyle(color: Colors.black54),
                   ),
                 ],
@@ -116,7 +142,7 @@ class _MatchScreenState extends State<MatchScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t('Error:', 'Fel:')} $e')),
+        SnackBar(content: Text('${_t('Fel:', 'Fel:')} $e')),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -125,7 +151,6 @@ class _MatchScreenState extends State<MatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Fake matches for now (next step: fetch from backend)
     final matches = [
       _MatchCardData(
         vibe: _t('Quiet walk, no pressure', 'Lugn promenad, inga krav'),
@@ -151,9 +176,7 @@ class _MatchScreenState extends State<MatchScreen> {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_t('Matches', 'Matchningar')),
-      ),
+      appBar: AppBar(title: Text(_t('Matches', 'Matchningar'))),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -177,9 +200,7 @@ class _MatchScreenState extends State<MatchScreen> {
                     distance: m.distance,
                     reliability: m.reliability,
                     buttonText: _t('Send invite', 'Skicka inbjudan'),
-                    onInvite: _loading
-                        ? null
-                        : () => _onInvitePressed(activity: m.activity, duration: m.duration),
+                    onInvite: _loading ? null : () => _onInvitePressed(activity: m.activity, duration: m.duration),
                   );
                 },
               ),
@@ -195,7 +216,7 @@ class _MatchCardData {
   final String vibe;
   final String distance;
   final String reliability;
-  final String activity; // walk|coffee|codo
+  final String activity;
   final int duration;
 
   const _MatchCardData({
@@ -258,9 +279,16 @@ class _MatchCard extends StatelessWidget {
 
 class _InviteTile extends StatelessWidget {
   final String text;
-  final VoidCallback onTap;
+  final String activity;
+  final int duration;
+  final Future<void> Function() onTap;
 
-  const _InviteTile({required this.text, required this.onTap});
+  const _InviteTile({
+    required this.text,
+    required this.activity,
+    required this.duration,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -268,7 +296,7 @@ class _InviteTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
+        onTap: () async => onTap(),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),

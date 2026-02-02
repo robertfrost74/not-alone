@@ -7,6 +7,7 @@ import 'screens/language_screen.dart';
 import 'screens/email_screen.dart';
 import 'screens/energy_screen.dart';
 import 'screens/request_screen.dart';
+import 'screens/meet_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +55,8 @@ class _NotAloneAppState extends State<NotAloneApp> {
             '/language': (_) => LanguageScreen(appState: _appState),
             '/email': (_) => EmailScreen(appState: _appState),
             '/energy': (_) => EnergyScreen(appState: _appState),
+            '/meet': (_) => MeetScreen(appState: _appState),
+
 
             // Request screen is opened via MaterialPageRoute (we pass energy),
             // but we keep a route placeholder in case you want it later.
