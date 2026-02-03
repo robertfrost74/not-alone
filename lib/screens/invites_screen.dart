@@ -44,29 +44,47 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
-    final where = <String, Object>{
-      'status': 'open',
-    };
-
-    if (_activity != 'all') where['activity'] = _activity as Object;
-    if (_mode != 'all') where['mode'] = _mode as Object;
-
     final res = await Supabase.instance.client
         .from('invites')
         .select(
             'id, host_user_id, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status)')
-        .match(where)
+        .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(50);
 
-    final invites = (res as List).cast<Map<String, dynamic>>();
+    var invites = (res as List).cast<Map<String, dynamic>>();
     if (invites.isEmpty) return invites;
+
+    if (_activity != 'all') {
+      invites = invites.where((invite) {
+        final activity = (invite['activity'] ?? '').toString();
+        return _normalizeActivity(activity) == _normalizeActivity(_activity);
+      }).toList();
+    }
+
+    if (_mode != 'all') {
+      invites = invites.where((invite) {
+        final mode = (invite['mode'] ?? '').toString();
+        return _normalizeMode(mode) == _normalizeMode(_mode);
+      }).toList();
+    }
+
     for (final invite in invites) {
       final members = (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
       invite['accepted_count'] =
           members.where((member) => member['status']?.toString() != 'cannot_attend').length;
     }
     return invites;
+  }
+
+  String _normalizeMode(String value) {
+    if (value == '1to1') return 'one_to_one';
+    return value;
+  }
+
+  String _normalizeActivity(String value) {
+    if (value == 'fika') return 'coffee';
+    return value;
   }
 
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
