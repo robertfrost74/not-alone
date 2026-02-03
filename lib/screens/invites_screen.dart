@@ -55,20 +55,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
     var invites = (res as List).cast<Map<String, dynamic>>();
     if (invites.isEmpty) return invites;
 
-    if (_activity != 'all') {
-      invites = invites.where((invite) {
-        final activity = (invite['activity'] ?? '').toString();
-        return _normalizeActivity(activity) == _normalizeActivity(_activity);
-      }).toList();
-    }
-
-    if (_mode != 'all') {
-      invites = invites.where((invite) {
-        final mode = (invite['mode'] ?? '').toString();
-        return _normalizeMode(mode) == _normalizeMode(_mode);
-      }).toList();
-    }
-
     for (final invite in invites) {
       final members = (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
       invite['accepted_count'] =
@@ -78,13 +64,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   String _normalizeMode(String value) {
-    if (value == '1to1') return 'one_to_one';
-    return value;
+    final normalized = value.trim().toLowerCase();
+    if (normalized == '1to1' || normalized == 'one-to-one') return 'one_to_one';
+    return normalized;
   }
 
   String _normalizeActivity(String value) {
-    if (value == 'fika') return 'coffee';
-    return value;
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'fika') return 'coffee';
+    return normalized;
+  }
+
+  bool _matchesFilters(Map<String, dynamic> invite) {
+    if (_activity != 'all') {
+      final activity = _normalizeActivity((invite['activity'] ?? '').toString());
+      if (activity != _normalizeActivity(_activity)) return false;
+    }
+    if (_mode != 'all') {
+      final mode = _normalizeMode((invite['mode'] ?? '').toString());
+      if (mode != _normalizeMode(_mode)) return false;
+    }
+    return true;
   }
 
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
@@ -328,12 +328,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     return Center(child: Text('Error: ${snap.error}'));
                   }
 
-                  final items = snap.data ?? [];
+                  final allItems = snap.data ?? [];
+                  final items = allItems.where(_matchesFilters).toList();
+
                   if (items.isEmpty) {
                     return Center(
                       child: Text(isSv
-                          ? 'Inga öppna inbjudningar just nu'
-                          : 'No open invites right now'),
+                          ? 'Inga öppna inbjudningar för filtret'
+                          : 'No open invites for this filter'),
                     );
                   }
 
