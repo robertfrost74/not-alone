@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
@@ -14,12 +15,33 @@ class InvitesScreen extends StatefulWidget {
 class _InvitesScreenState extends State<InvitesScreen> {
   bool _joining = false;
   bool _deleting = false;
+  late Future<List<Map<String, dynamic>>> _invitesFuture;
+  Timer? _clockTimer;
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
   String _mode = 'all'; // all|one_to_one|group
 
   bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
+
+  @override
+  void initState() {
+    super.initState();
+    _invitesFuture = _loadInvites();
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  void _reloadInvites() {
+    setState(() => _invitesFuture = _loadInvites());
+  }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     final where = <String, Object>{
@@ -119,7 +141,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     try {
       await Supabase.instance.client.from('invites').delete().match({'id': inviteId});
       if (!mounted) return;
-      setState(() {});
+      _reloadInvites();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -171,6 +193,36 @@ class _InvitesScreenState extends State<InvitesScreen> {
     return '$y-$mo-$d $h:$mi';
   }
 
+  DateTime? _parseDateTime(dynamic raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
+  double _timeLeftProgress(dynamic createdRaw, dynamic meetingRaw) {
+    final createdAt = _parseDateTime(createdRaw);
+    final meetingAt = _parseDateTime(meetingRaw);
+    if (createdAt == null || meetingAt == null) return 0;
+    final total = meetingAt.difference(createdAt).inSeconds;
+    if (total <= 0) return 0;
+    final remaining = meetingAt.difference(DateTime.now()).inSeconds;
+    return (remaining / total).clamp(0.0, 1.0);
+  }
+
+  String _timeLeftLabel(dynamic meetingRaw) {
+    final meetingAt = _parseDateTime(meetingRaw);
+    if (meetingAt == null) return _t('No meeting time', 'Ingen mötestid');
+
+    final diff = meetingAt.difference(DateTime.now());
+    if (diff.inSeconds <= 0) return _t('Started', 'Startad');
+
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes % 60;
+    if (hours > 0) {
+      return isSv ? '$hours h $minutes min kvar' : '$hours h $minutes min left';
+    }
+    return isSv ? '${diff.inMinutes} min kvar' : '${diff.inMinutes} min left';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -187,13 +239,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
                 ),
               );
               if (created == true && mounted) {
-                setState(() {});
+                _reloadInvites();
               }
             },
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() {}),
+            onPressed: _reloadInvites,
           )
         ],
       ),
@@ -243,7 +295,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
             const SizedBox(height: 12),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _loadInvites(),
+                future: _invitesFuture,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -268,6 +320,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                       final it = items[i];
                       final place = (it['place'] ?? '').toString();
                       final meetingTimeLabel = _formatDateTime(it['meeting_time']);
+                      final timeProgress = _timeLeftProgress(it['created_at'], it['meeting_time']);
+                      final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
                       final canDelete = it['host_user_id']?.toString() ==
                           Supabase.instance.client.auth.currentUser?.id;
 
@@ -325,6 +379,19 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             const SizedBox(height: 6),
                             Text(
                               isSv ? 'Tid: $meetingTimeLabel' : 'Time: $meetingTimeLabel',
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: timeProgress,
+                                minHeight: 7,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              timeLeftLabel,
+                              style: const TextStyle(color: Colors.black54, fontSize: 12),
                             ),
                             if (place.isNotEmpty) ...[
                               const SizedBox(height: 6),
