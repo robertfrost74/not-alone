@@ -284,6 +284,64 @@ class _InvitesScreenState extends State<InvitesScreen> {
     return isSv ? '${diff.inMinutes} min kvar' : '${diff.inMinutes} min left';
   }
 
+  String _inviteStatus(Map<String, dynamic> invite) {
+    final meetingAt = _parseDateTime(invite['meeting_time']);
+    final accepted = (invite['accepted_count'] as int?) ?? 0;
+    final mode = _normalizeMode((invite['mode'] ?? '').toString());
+    final now = DateTime.now();
+
+    if (meetingAt != null) {
+      final expiredAt = meetingAt.add(const Duration(minutes: 15));
+      if (now.isAfter(expiredAt)) return 'expired';
+      if (now.isAfter(meetingAt)) return 'started';
+    }
+
+    final isFull = mode == 'one_to_one' ? accepted >= 1 : accepted >= 4;
+    if (isFull) return 'full';
+    return 'open';
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'full':
+        return isSv ? 'Full' : 'Full';
+      case 'started':
+        return isSv ? 'Startad' : 'Started';
+      case 'expired':
+        return isSv ? 'Utgången' : 'Expired';
+      default:
+        return isSv ? 'Öppen' : 'Open';
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'full':
+        return Colors.orange.shade100;
+      case 'started':
+        return Colors.blue.shade100;
+      case 'expired':
+        return Colors.red.shade100;
+      default:
+        return Colors.green.shade100;
+    }
+  }
+
+  bool _canJoinStatus(String status) => status == 'open';
+
+  String _joinButtonLabel(String status) {
+    switch (status) {
+      case 'full':
+        return isSv ? 'Full' : 'Full';
+      case 'started':
+        return isSv ? 'Startad' : 'Started';
+      case 'expired':
+        return isSv ? 'Utgången' : 'Expired';
+      default:
+        return isSv ? 'Gå med' : 'Join';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -393,6 +451,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                       final meetingTimeLabel = _formatDateTime(it['meeting_time']);
                       final timeProgress = _timeLeftProgress(it['created_at'], it['meeting_time']);
                       final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
+                      final status = _inviteStatus(it);
                       final canDelete = it['host_user_id']?.toString() ==
                           Supabase.instance.client.auth.currentUser?.id;
 
@@ -426,6 +485,18 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         ? '${it['accepted_count'] ?? 0} tackat ja'
                                         : '${it['accepted_count'] ?? 0} joined',
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(status),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    _statusLabel(status),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                                   ),
                                 ),
                                 if (canDelete) ...[
@@ -473,10 +544,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               width: double.infinity,
                               height: 44,
                               child: FilledButton(
-                                onPressed: _joining
-                                    ? null
-                                    : () => _joinInvite(it),
-                                child: Text(isSv ? 'Gå med' : 'Join'),
+                                onPressed: _joining || !_canJoinStatus(status) ? null : () => _joinInvite(it),
+                                child: Text(_joinButtonLabel(status)),
                               ),
                             ),
                           ],
