@@ -10,6 +10,7 @@ class MatchScreen extends StatefulWidget {
   final int selectedDuration;
   final String selectedMode;
   final String selectedEnergy;
+  final int? selectedMaxParticipants;
 
   const MatchScreen({
     super.key,
@@ -18,6 +19,7 @@ class MatchScreen extends StatefulWidget {
     required this.selectedDuration,
     required this.selectedMode,
     required this.selectedEnergy,
+    required this.selectedMaxParticipants,
   });
 
   @override
@@ -158,6 +160,7 @@ class _MatchScreenState extends State<MatchScreen> {
       'host_user_id': userId,
       'activity': activity,
       'mode': widget.selectedMode,
+      'max_participants': widget.selectedMode == 'group' ? widget.selectedMaxParticipants : null,
       'energy': widget.selectedEnergy,
       'talk_level': 'low',
       'duration': duration,

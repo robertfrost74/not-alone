@@ -81,7 +81,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final res = await Supabase.instance.client
         .from('invites')
         .select(
-            'id, host_user_id, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status)')
+            'id, host_user_id, max_participants, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status)')
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(50);
@@ -288,6 +288,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final meetingAt = _parseDateTime(invite['meeting_time']);
     final accepted = (invite['accepted_count'] as int?) ?? 0;
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
+    final maxParticipants = (invite['max_participants'] as num?)?.toInt();
     final now = DateTime.now();
 
     if (meetingAt != null) {
@@ -296,7 +297,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (now.isAfter(meetingAt)) return 'started';
     }
 
-    final isFull = mode == 'one_to_one' ? accepted >= 1 : accepted >= 4;
+    final isFull = mode == 'one_to_one'
+        ? accepted >= 1
+        : maxParticipants != null
+            ? accepted >= maxParticipants
+            : accepted >= 4;
     if (isFull) return 'full';
     return 'open';
   }

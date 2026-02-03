@@ -16,6 +16,7 @@ class RequestScreen extends StatefulWidget {
 class _RequestScreenState extends State<RequestScreen> {
   String _activity = 'walk';
   String _mode = 'one_to_one';
+  int? _maxParticipants;
   double _durationMin = 20;
   bool _loading = false;
 
@@ -28,6 +29,12 @@ class _RequestScreenState extends State<RequestScreen> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(isSv ? 'Inte inloggad' : 'Not signed in')),
+      );
+      return;
+    }
+    if (_mode == 'group' && _maxParticipants == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isSv ? 'Välj max antal för grupp' : 'Pick max participants for group')),
       );
       return;
     }
@@ -55,6 +62,7 @@ class _RequestScreenState extends State<RequestScreen> {
             selectedDuration: _durationMin.round(),
             selectedMode: _mode,
             selectedEnergy: widget.energy,
+            selectedMaxParticipants: _maxParticipants,
           ),
         ),
       );
@@ -112,8 +120,27 @@ class _RequestScreenState extends State<RequestScreen> {
                 _ChoiceOption(value: 'group', label: _t('Group', 'Grupp')),
               ],
               selected: _mode,
-              onChanged: (v) => setState(() => _mode = v),
+              onChanged: (v) => setState(() {
+                _mode = v;
+                if (_mode != 'group') _maxParticipants = null;
+              }),
             ),
+
+            if (_mode == 'group') ...[
+              const SizedBox(height: 12),
+              _Segment(title: _t('Max participants', 'Max antal')),
+              const SizedBox(height: 8),
+              _ChoiceRow(
+                options: const [
+                  _ChoiceOption(value: '2', label: '2'),
+                  _ChoiceOption(value: '3', label: '3'),
+                  _ChoiceOption(value: '4', label: '4'),
+                  _ChoiceOption(value: '6', label: '6'),
+                ],
+                selected: (_maxParticipants ?? '').toString(),
+                onChanged: (v) => setState(() => _maxParticipants = int.parse(v)),
+              ),
+            ],
 
             const SizedBox(height: 18),
 

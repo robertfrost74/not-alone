@@ -14,6 +14,7 @@ class CreateInviteScreen extends StatefulWidget {
 class _CreateInviteScreenState extends State<CreateInviteScreen> {
   String _activity = 'walk';
   String _mode = '1to1';
+  int? _maxParticipants;
   String _energy = 'medium';
   String _talkLevel = 'low';
   int _duration = 20;
@@ -101,6 +102,12 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
       );
       return;
     }
+    if (_mode == 'group' && _maxParticipants == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Pick max participants', 'Välj max antal'))),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -109,6 +116,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
         'host_user_id': userId,
         'activity': _activity,
         'mode': _mode,
+        'max_participants': _mode == 'group' ? _maxParticipants : null,
         'energy': _energy,
         'talk_level': _talkLevel,
         'duration': _duration,
@@ -169,8 +177,26 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                 const _ChoiceOption(value: '1to1', label: '1:1'),
                 _ChoiceOption(value: 'group', label: _t('Group', 'Grupp')),
               ],
-              onChanged: (value) => setState(() => _mode = value),
+              onChanged: (value) => setState(() {
+                _mode = value;
+                if (_mode != 'group') _maxParticipants = null;
+              }),
             ),
+            if (_mode == 'group') ...[
+              const SizedBox(height: 12),
+              _SectionTitle(title: _t('Max participants', 'Max antal')),
+              const SizedBox(height: 8),
+              _ChoiceWrap(
+                selected: (_maxParticipants ?? '').toString(),
+                options: const [
+                  _ChoiceOption(value: '2', label: '2'),
+                  _ChoiceOption(value: '3', label: '3'),
+                  _ChoiceOption(value: '4', label: '4'),
+                  _ChoiceOption(value: '6', label: '6'),
+                ],
+                onChanged: (value) => setState(() => _maxParticipants = int.parse(value)),
+              ),
+            ],
             const SizedBox(height: 14),
             _SectionTitle(title: _t('Energy', 'Energi')),
             const SizedBox(height: 8),
