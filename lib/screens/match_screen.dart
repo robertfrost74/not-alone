@@ -112,7 +112,7 @@ class _MatchScreenState extends State<MatchScreen> {
     switch (widget.selectedActivity) {
       case 'walk':
         return _MatchCardData(
-          vibe: _t('Quiet walk, no pressure', 'Lugn promenad, inga krav'),
+          vibe: _t('Quiet walk', 'Lugn promenad'),
           distance: _t('650 m away', '650 m bort'),
           reliability: _t('On time usually', 'Brukar vara i tid'),
           activity: 'walk',
@@ -128,7 +128,7 @@ class _MatchScreenState extends State<MatchScreen> {
         );
       case 'workout':
         return _MatchCardData(
-          vibe: _t('Workout together, low pressure', 'Träna ihop, låg press'),
+          vibe: _t('Workout together', 'Träna ihop'),
           distance: _t('1.1 km away', '1,1 km bort'),
           reliability: _t('Steady pace', 'Jämnt tempo'),
           activity: 'workout',
@@ -152,7 +152,7 @@ class _MatchScreenState extends State<MatchScreen> {
         );
       default:
         return _MatchCardData(
-          vibe: _t('Quiet meetup, no pressure', 'Lugn träff, inga krav'),
+          vibe: _t('Quiet meetup', 'Lugn träff'),
           distance: _t('900 m away', '900 m bort'),
           reliability: _t('Friendly', 'Vänlig'),
           activity: widget.selectedActivity,
