@@ -65,13 +65,22 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   String _normalizeMode(String value) {
     final normalized = value.trim().toLowerCase();
-    if (normalized == '1to1' || normalized == 'one-to-one') return 'one_to_one';
+    if (normalized == '1to1' ||
+        normalized == '1:1' ||
+        normalized == 'one-to-one' ||
+        normalized == 'one to one') {
+      return 'one_to_one';
+    }
     return normalized;
   }
 
   String _normalizeActivity(String value) {
     final normalized = value.trim().toLowerCase();
-    if (normalized == 'fika') return 'coffee';
+    if (normalized == 'fika' || normalized == 'coffee' || normalized == 'kaffe') return 'coffee';
+    if (normalized == 'promenad' || normalized == 'walk') return 'walk';
+    if (normalized == 'träna' || normalized == 'trana' || normalized == 'workout') return 'workout';
+    if (normalized == 'lunch' || normalized == 'luncha') return 'lunch';
+    if (normalized == 'middag' || normalized == 'dinner') return 'dinner';
     return normalized;
   }
 
@@ -289,8 +298,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     DropdownMenuItem(value: 'dinner', child: Text('Middag / Dinner')),
                   ],
                   onChanged: (v) {
-                    _activity = v ?? 'all';
-                    _reloadInvites();
+                    setState(() {
+                      _activity = v ?? 'all';
+                    });
                   },
                 ),
                 const SizedBox(height: 10),
@@ -307,8 +317,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                         value: 'group', child: Text('Grupp / Group')),
                   ],
                   onChanged: (v) {
-                    _mode = v ?? 'all';
-                    _reloadInvites();
+                    setState(() {
+                      _mode = v ?? 'all';
+                    });
                   },
                 ),
               ],
