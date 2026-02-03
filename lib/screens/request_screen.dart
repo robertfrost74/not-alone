@@ -5,9 +5,8 @@ import 'match_screen.dart';
 
 class RequestScreen extends StatefulWidget {
   final AppState appState;
-  final String energy;
 
-  const RequestScreen({super.key, required this.appState, required this.energy});
+  const RequestScreen({super.key, required this.appState});
 
   @override
   State<RequestScreen> createState() => _RequestScreenState();
@@ -15,8 +14,7 @@ class RequestScreen extends StatefulWidget {
 
 class _RequestScreenState extends State<RequestScreen> {
   String _activity = 'walk';
-  String _mode = 'one_to_one';
-  int? _maxParticipants;
+  int _participantCount = 1;
   double _durationMin = 20;
   bool _loading = false;
 
@@ -32,12 +30,7 @@ class _RequestScreenState extends State<RequestScreen> {
       );
       return;
     }
-    if (_mode == 'group' && _maxParticipants == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isSv ? 'Välj max antal för grupp' : 'Pick max participants for group')),
-      );
-      return;
-    }
+    final mode = _participantCount == 1 ? 'one_to_one' : 'group';
 
     setState(() => _loading = true);
 
@@ -45,10 +38,10 @@ class _RequestScreenState extends State<RequestScreen> {
       await Supabase.instance.client.from('session_requests').insert({
         'user_id': user.id,
         'activity': _activity,
-        'mode': _mode,
+        'mode': mode,
         'duration_min': _durationMin.round(),
         'radius_m': 1000,
-        'energy': widget.energy,
+        'energy': 'medium',
       });
 
       if (!mounted) return;
@@ -60,9 +53,9 @@ class _RequestScreenState extends State<RequestScreen> {
             appState: widget.appState,
             selectedActivity: _activity,
             selectedDuration: _durationMin.round(),
-            selectedMode: _mode,
-            selectedEnergy: widget.energy,
-            selectedMaxParticipants: _maxParticipants,
+            selectedMode: mode,
+            selectedEnergy: 'medium',
+            selectedMaxParticipants: mode == 'group' ? _participantCount : null,
           ),
         ),
       );
@@ -96,7 +89,7 @@ class _RequestScreenState extends State<RequestScreen> {
             ),
             const SizedBox(height: 16),
 
-            const _Segment(title: 'Activity'),
+            _Segment(title: _t('Activity', 'Aktivitet')),
             const SizedBox(height: 8),
             _ChoiceRow(
               options: [
@@ -112,35 +105,32 @@ class _RequestScreenState extends State<RequestScreen> {
 
             const SizedBox(height: 18),
 
-            _Segment(title: _t('Mode', 'Läge')),
+            _Segment(title: _t('Max participants', 'Max antal')),
             const SizedBox(height: 8),
-            _ChoiceRow(
-              options: [
-                _ChoiceOption(value: 'one_to_one', label: _t('1:1', '1:1')),
-                _ChoiceOption(value: 'group', label: _t('Group', 'Grupp')),
-              ],
-              selected: _mode,
-              onChanged: (v) => setState(() {
-                _mode = v;
-                if (_mode != 'group') _maxParticipants = null;
-              }),
-            ),
-
-            if (_mode == 'group') ...[
-              const SizedBox(height: 12),
-              _Segment(title: _t('Max participants', 'Max antal')),
-              const SizedBox(height: 8),
-              _ChoiceRow(
-                options: const [
-                  _ChoiceOption(value: '2', label: '2'),
-                  _ChoiceOption(value: '3', label: '3'),
-                  _ChoiceOption(value: '4', label: '4'),
-                  _ChoiceOption(value: '6', label: '6'),
-                ],
-                selected: (_maxParticipants ?? '').toString(),
-                onChanged: (v) => setState(() => _maxParticipants = int.parse(v)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black12),
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _participantCount.toString(),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  Slider(
+                    min: 1,
+                    max: 10,
+                    divisions: 9,
+                    value: _participantCount.toDouble(),
+                    label: _participantCount.toString(),
+                    onChanged: (v) => setState(() => _participantCount = v.round()),
+                  ),
+                ],
+              ),
+            ),
 
             const SizedBox(height: 18),
 

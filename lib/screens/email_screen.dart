@@ -26,8 +26,7 @@ class _EmailScreenState extends State<EmailScreen> {
 
       if (!mounted) return;
 
-      // Your routes use '/energy' in main.dart, so go there.
-      Navigator.pushReplacementNamed(context, '/energy');
+      Navigator.pushReplacementNamed(context, '/hub');
     } catch (e) {
       debugPrint('LOGIN ERROR: $e');
       if (!mounted) return;
@@ -44,7 +43,7 @@ class _EmailScreenState extends State<EmailScreen> {
     final isSv = widget.appState.locale.languageCode == 'sv';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Not Alone')),
+      appBar: AppBar(title: const Text('Social')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(

@@ -98,7 +98,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     try {
       await Supabase.instance.client.auth.signInAnonymously();
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/energy');
+      Navigator.pushReplacementNamed(context, '/hub');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -109,9 +109,28 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     }
   }
 
+  Future<void> _signOut() async {
+    setState(() => _loading = true);
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.appState.locale.languageCode == 'sv' ? 'Utloggad' : 'Signed out')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sign out failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSv = widget.appState.locale.languageCode == 'sv';
+    final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
 
     return Scaffold(
       body: SafeArea(
@@ -122,7 +141,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             children: [
               const Spacer(),
               const Text(
-                'Not Alone',
+                'Social',
                 style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
@@ -137,14 +156,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton(
-                  onPressed: _loading ? null : _showLoginSheet,
+                  onPressed: _loading ? null : (isLoggedIn ? _signOut : _showLoginSheet),
                   child: _loading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(isSv ? 'Logga in' : 'Login'),
+                      : Text(isLoggedIn ? (isSv ? 'Logga ut' : 'Sign out') : (isSv ? 'Logga in' : 'Login')),
                 ),
               ),
               const SizedBox(height: 10),

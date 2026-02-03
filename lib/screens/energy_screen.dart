@@ -42,7 +42,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => HubScreen(appState: widget.appState, energy: energy),
+          builder: (_) => HubScreen(appState: widget.appState),
         ),
       );
     } on PostgrestException catch (e) {

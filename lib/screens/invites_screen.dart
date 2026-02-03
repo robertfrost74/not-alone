@@ -518,9 +518,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              isSv
-                                  ? 'Energi: ${it['energy']} • Prat: ${it['talk_level']}'
-                                  : 'Energy: ${it['energy']} • Talk: ${it['talk_level']}',
+                              isSv ? 'Prat: ${it['talk_level']}' : 'Talk: ${it['talk_level']}',
                               style: const TextStyle(color: Colors.black54),
                             ),
                             const SizedBox(height: 6),

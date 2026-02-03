@@ -1,25 +1,73 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import 'invites_screen.dart';
 import 'request_screen.dart';
+import 'welcome_screen.dart';
 
-class HubScreen extends StatelessWidget {
+class HubScreen extends StatefulWidget {
   final AppState appState;
-  final String energy;
 
   const HubScreen({
     super.key,
     required this.appState,
-    required this.energy,
   });
 
-  bool get isSv => appState.locale.languageCode == 'sv';
+  @override
+  State<HubScreen> createState() => _HubScreenState();
+}
+
+class _HubScreenState extends State<HubScreen> {
+  bool _loading = false;
+
+  bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
+
+  Future<void> _signOut() async {
+    setState(() => _loading = true);
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => WelcomeScreen(appState: widget.appState),
+        ),
+        (route) => false,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Choose next step', 'Välj nästa steg'))),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _loading
+              ? null
+              : () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  } else {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => WelcomeScreen(appState: widget.appState),
+                      ),
+                      (route) => false,
+                    );
+                  }
+                },
+        ),
+        title: Text(_t('Choose next step', 'Välj nästa steg')),
+        actions: [
+          TextButton(
+            onPressed: _loading ? null : _signOut,
+            child: Text(_t('Sign out', 'Logga ut')),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -37,7 +85,7 @@ class HubScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => RequestScreen(appState: appState, energy: energy),
+                      builder: (_) => RequestScreen(appState: widget.appState),
                     ),
                   );
                 },
@@ -52,7 +100,7 @@ class HubScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => InvitesScreen(appState: appState),
+                      builder: (_) => InvitesScreen(appState: widget.appState),
                     ),
                   );
                 },
@@ -65,4 +113,3 @@ class HubScreen extends StatelessWidget {
     );
   }
 }
-
