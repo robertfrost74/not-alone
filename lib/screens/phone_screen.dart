@@ -54,6 +54,7 @@ class _PhoneScreenState extends State<PhoneScreen> {
                     : () async {
                         setState(() => _loading = true);
                         await Future.delayed(const Duration(milliseconds: 300));
+                        if (!context.mounted) return;
                         setState(() => _loading = false);
 
                         ScaffoldMessenger.of(context).showSnackBar(

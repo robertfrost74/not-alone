@@ -16,8 +16,7 @@ class RequestScreen extends StatefulWidget {
 class _RequestScreenState extends State<RequestScreen> {
   String _activity = 'walk';
   String _mode = 'one_to_one';
-  int _durationMin = 20;
-  int _radiusM = 1000;
+  double _durationMin = 20;
   bool _loading = false;
 
   String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
@@ -40,8 +39,8 @@ class _RequestScreenState extends State<RequestScreen> {
         'user_id': user.id,
         'activity': _activity,
         'mode': _mode,
-        'duration_min': _durationMin,
-        'radius_m': _radiusM,
+        'duration_min': _durationMin.round(),
+        'radius_m': 1000,
         'energy': widget.energy,
       });
 
@@ -50,7 +49,13 @@ class _RequestScreenState extends State<RequestScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => MatchScreen(appState: widget.appState),
+          builder: (_) => MatchScreen(
+            appState: widget.appState,
+            selectedActivity: _activity,
+            selectedDuration: _durationMin.round(),
+            selectedMode: _mode,
+            selectedEnergy: widget.energy,
+          ),
         ),
       );
     } on PostgrestException catch (e) {
@@ -88,8 +93,10 @@ class _RequestScreenState extends State<RequestScreen> {
             _ChoiceRow(
               options: [
                 _ChoiceOption(value: 'walk', label: _t('Walk', 'Promenad')),
-                _ChoiceOption(value: 'coffee', label: _t('Coffee', 'Kaffe')),
-                _ChoiceOption(value: 'codo', label: _t('Co-do', 'Co-do')),
+                _ChoiceOption(value: 'workout', label: _t('Workout', 'Träna')),
+                _ChoiceOption(value: 'coffee', label: _t('Fika', 'Fika')),
+                _ChoiceOption(value: 'lunch', label: _t('Lunch', 'Luncha')),
+                _ChoiceOption(value: 'dinner', label: _t('Dinner', 'Middag')),
               ],
               selected: _activity,
               onChanged: (v) => setState(() => _activity = v),
@@ -112,29 +119,29 @@ class _RequestScreenState extends State<RequestScreen> {
 
             _Segment(title: _t('Duration', 'Längd')),
             const SizedBox(height: 8),
-            _ChoiceRow(
-              options: const [
-                _ChoiceOption(value: '10', label: '10m'),
-                _ChoiceOption(value: '20', label: '20m'),
-                _ChoiceOption(value: '30', label: '30m'),
-                _ChoiceOption(value: '60', label: '60m'),
-              ],
-              selected: _durationMin.toString(),
-              onChanged: (v) => setState(() => _durationMin = int.parse(v)),
-            ),
-
-            const SizedBox(height: 18),
-
-            _Segment(title: _t('Radius', 'Radie')),
-            const SizedBox(height: 8),
-            _ChoiceRow(
-              options: const [
-                _ChoiceOption(value: '500', label: '500m'),
-                _ChoiceOption(value: '1000', label: '1km'),
-                _ChoiceOption(value: '3000', label: '3km'),
-              ],
-              selected: _radiusM.toString(),
-              onChanged: (v) => setState(() => _radiusM = int.parse(v)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_durationMin.round()} min',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  Slider(
+                    min: 10,
+                    max: 120,
+                    divisions: 110,
+                    value: _durationMin,
+                    label: '${_durationMin.round()} min',
+                    onChanged: (v) => setState(() => _durationMin = v),
+                  ),
+                ],
+              ),
             ),
 
             const SizedBox(height: 22),

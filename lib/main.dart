@@ -8,6 +8,7 @@ import 'screens/email_screen.dart';
 import 'screens/energy_screen.dart';
 import 'screens/request_screen.dart';
 import 'screens/meet_screen.dart';
+import 'screens/invites_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,12 +56,53 @@ class _NotAloneAppState extends State<NotAloneApp> {
             '/language': (_) => LanguageScreen(appState: _appState),
             '/email': (_) => EmailScreen(appState: _appState),
             '/energy': (_) => EnergyScreen(appState: _appState),
-            '/meet': (_) => MeetScreen(appState: _appState),
-
+            '/invites': (_) => InvitesScreen(appState: _appState),
 
             // Request screen is opened via MaterialPageRoute (we pass energy),
             // but we keep a route placeholder in case you want it later.
             '/request': (_) => RequestScreen(appState: _appState, energy: 'medium'),
+          },
+          onGenerateRoute: (settings) {
+            if (settings.name != '/meet') return null;
+
+            final args = settings.arguments;
+            final data = args is Map ? args : const {};
+
+            DateTime? meetingTime;
+            final rawMeetingTime = data['meeting_time'];
+            if (rawMeetingTime is DateTime) {
+              meetingTime = rawMeetingTime;
+            } else if (rawMeetingTime is String && rawMeetingTime.isNotEmpty) {
+              meetingTime = DateTime.tryParse(rawMeetingTime);
+            }
+
+            DateTime? createdAt;
+            final rawCreatedAt = data['created_at'];
+            if (rawCreatedAt is DateTime) {
+              createdAt = rawCreatedAt;
+            } else if (rawCreatedAt is String && rawCreatedAt.isNotEmpty) {
+              createdAt = DateTime.tryParse(rawCreatedAt);
+            }
+
+            final rawDuration = data['duration'];
+            int duration = 20;
+            if (rawDuration is int) {
+              duration = rawDuration;
+            } else if (rawDuration != null) {
+              duration = int.tryParse(rawDuration.toString()) ?? 20;
+            }
+
+            return MaterialPageRoute(
+              builder: (_) => MeetScreen(
+                appState: _appState,
+                minutes: duration,
+                inviteId: data['invite_id']?.toString(),
+                inviteMemberId: data['invite_member_id']?.toString(),
+                initialMeetingTime: meetingTime,
+                initialCreatedAt: createdAt,
+                initialPlace: data['place']?.toString(),
+              ),
+            );
           },
         );
       },
