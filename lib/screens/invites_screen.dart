@@ -17,6 +17,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _deleting = false;
   late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
+  Timer? _realtimeDebounceTimer;
+  RealtimeChannel? _invitesChannel;
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
   String _mode = 'all'; // all|one_to_one|group
@@ -28,6 +30,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   void initState() {
     super.initState();
     _invitesFuture = _loadInvites();
+    _startRealtime();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -36,11 +39,42 @@ class _InvitesScreenState extends State<InvitesScreen> {
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _realtimeDebounceTimer?.cancel();
+    final channel = _invitesChannel;
+    if (channel != null) {
+      Supabase.instance.client.removeChannel(channel);
+      _invitesChannel = null;
+    }
     super.dispose();
   }
 
   void _reloadInvites() {
     setState(() => _invitesFuture = _loadInvites());
+  }
+
+  void _startRealtime() {
+    _invitesChannel = Supabase.instance.client
+        .channel('public:invites_live')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'invites',
+          callback: (_) => _scheduleRealtimeReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'invite_members',
+          callback: (_) => _scheduleRealtimeReload(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleRealtimeReload() {
+    _realtimeDebounceTimer?.cancel();
+    _realtimeDebounceTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) _reloadInvites();
+    });
   }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
