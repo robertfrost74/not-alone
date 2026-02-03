@@ -296,7 +296,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final meetingAt = _parseDateTime(invite['meeting_time']);
     final accepted = (invite['accepted_count'] as int?) ?? 0;
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
-    final maxParticipants = (invite['max_participants'] as num?)?.toInt();
+    final rawMax = invite['max_participants'];
+    final maxParticipants = rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
     final now = DateTime.now();
 
     if (meetingAt != null) {
@@ -330,7 +331,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Color _statusColor(String status) {
     switch (status) {
       case 'full':
-        return Colors.orange.shade100;
+        return Colors.red.shade400;
       case 'started':
         return Colors.blue.shade100;
       case 'expired':
@@ -489,7 +490,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                   ),
                                   child: Text(
                                     _statusLabel(status),
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: status == 'full' ? Colors.white : Colors.black87,
+                                    ),
                                   ),
                                 ),
                                 if (canDelete) ...[
