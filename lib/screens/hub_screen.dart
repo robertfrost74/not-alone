@@ -41,73 +41,60 @@ class _HubScreenState extends State<HubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _loading
-              ? null
-              : () {
-                  if (Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                  } else {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (_) => WelcomeScreen(appState: widget.appState),
-                      ),
-                      (route) => false,
-                    );
-                  }
-                },
-        ),
-        title: Text(_t('Choose next step', 'Välj nästa steg')),
-        actions: [
-          TextButton(
-            onPressed: _loading ? null : _signOut,
-            child: Text(_t('Sign out', 'Logga ut')),
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              _t('What do you want to do now?', 'Vad vill du göra nu?'),
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 52,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RequestScreen(appState: widget.appState),
-                    ),
-                  );
-                },
-                child: Text(_t('Create invite', 'Skapa inbjudan')),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 52,
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => InvitesScreen(appState: widget.appState),
-                    ),
-                  );
-                },
-                child: Text(_t('Browse invites', 'Se inbjudningar')),
-              ),
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(_t('Choose next step', 'Välj nästa steg')),
+          actions: [
+            TextButton(
+              onPressed: _loading ? null : _signOut,
+              child: Text(_t('Sign out', 'Logga ut')),
             ),
           ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _t('What do you want to do now?', 'Vad vill du göra nu?'),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RequestScreen(appState: widget.appState),
+                      ),
+                    );
+                  },
+                  child: Text(_t('Create invite', 'Skapa inbjudan')),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 52,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InvitesScreen(appState: widget.appState),
+                      ),
+                    );
+                  },
+                  child: Text(_t('Browse invites', 'Se inbjudningar')),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

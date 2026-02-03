@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 
@@ -44,6 +42,70 @@ class _MatchScreenState extends State<MatchScreen> {
   }
 
   String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+
+  String _activityLabel(String activity) {
+    switch (activity) {
+      case 'walk':
+        return _t('Walk', 'Promenad');
+      case 'coffee':
+        return _t('Fika', 'Fika');
+      case 'workout':
+        return _t('Workout', 'Träna');
+      case 'lunch':
+        return _t('Lunch', 'Lunch');
+      case 'dinner':
+        return _t('Dinner', 'Middag');
+      default:
+        return activity;
+    }
+  }
+
+  String _modeLabel(String mode) {
+    if (mode == 'group') return _t('Group', 'Grupp');
+    return _t('1:1', '1:1');
+  }
+
+  Future<bool> _showInviteConfirmModal({
+    required String activity,
+    required int duration,
+    required DateTime meetingTime,
+    required String place,
+  }) async {
+    final isSv = widget.appState.locale.languageCode == 'sv';
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(isSv ? 'Godkänn inbjudan' : 'Confirm invite'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${isSv ? 'Aktivitet' : 'Activity'}: ${_activityLabel(activity)}'),
+              Text('${isSv ? 'Tidpunkt' : 'Time'}: ${_formatDateTime(meetingTime)}'),
+              Text('${isSv ? 'Plats' : 'Place'}: $place'),
+              Text('${isSv ? 'Längd' : 'Duration'}: $duration ${isSv ? 'min' : 'min'}'),
+              Text('${isSv ? 'Antal' : 'Mode'}: ${_modeLabel(widget.selectedMode)}'),
+              if (widget.selectedMode == 'group' && widget.selectedMaxParticipants != null)
+                Text('${isSv ? 'Max antal' : 'Max participants'}: ${widget.selectedMaxParticipants}'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(isSv ? 'Avbryt' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(isSv ? 'Godkänn' : 'Approve'),
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
 
   _MatchCardData _cardForSelectedActivity() {
     final duration = widget.selectedDuration;
@@ -99,56 +161,6 @@ class _MatchScreenState extends State<MatchScreen> {
     }
   }
 
-  Future<List<String>> _fetchInvites({
-    required String activity,
-    required int duration,
-    required String meetingTimeText,
-    required String place,
-  }) async {
-    final lang = widget.appState.locale.languageCode;
-
-    final res = await Supabase.instance.client.functions.invoke(
-      'invite-writer',
-      body: {
-        'language': lang,
-        'activity': activity, // walk|coffee|workout|lunch|dinner
-        'duration': duration,
-        'meeting_time': meetingTimeText,
-        'place': place,
-      },
-    );
-
-    final data = res.data;
-    if (data == null) throw Exception('No data from function');
-
-    final decoded = data is String ? jsonDecode(data) : data;
-    if (decoded is! Map<String, dynamic>) throw Exception('Unexpected response format');
-
-    if (decoded['ok'] != true) {
-      throw Exception(decoded['error']?.toString() ?? 'Function failed');
-    }
-
-    final suggestions = decoded['suggestions'];
-    if (suggestions is! List) throw Exception('No suggestions returned');
-
-    return suggestions.map((e) => e.toString()).toList();
-  }
-
-  Future<void> _saveInvite({
-    required String activity,
-    required int duration,
-    required String language,
-    required String text,
-  }) async {
-    await Supabase.instance.client.from('sent_invites').insert({
-      'user_id': Supabase.instance.client.auth.currentUser?.id,
-      'activity': activity,
-      'duration': duration,
-      'language': language,
-      'invite_text': text,
-    });
-  }
-
   Future<String?> _createOpenInvite({
     required String activity,
     required int duration,
@@ -192,91 +204,25 @@ class _MatchScreenState extends State<MatchScreen> {
       return;
     }
 
-    setState(() => _loading = true);
-
     try {
-      final suggestions = await _fetchInvites(
+      final approved = await _showInviteConfirmModal(
         activity: activity,
         duration: duration,
-        meetingTimeText: _formatDateTime(meetingTime),
+        meetingTime: meetingTime,
         place: place,
       );
-      if (!mounted) return;
+      if (!approved || !mounted) return;
 
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (context) {
-          final isSv = widget.appState.locale.languageCode == 'sv';
-          final lang = widget.appState.locale.languageCode;
-
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isSv ? 'Välj en inbjudan' : 'Pick an invite',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  ...suggestions.map(
-                    (s) => _InviteTile(
-                      text: s,
-                      activity: activity,
-                      duration: duration,
-                      onTap: () async {
-                        await Clipboard.setData(ClipboardData(text: s));
-
-                        await _saveInvite(
-                          activity: activity,
-                          duration: duration,
-                          language: lang,
-                          text: s,
-                        );
-                        final inviteId = await _createOpenInvite(
-                          activity: activity,
-                          duration: duration,
-                          meetingTime: meetingTime,
-                          place: place,
-                        );
-
-                        if (!context.mounted) return;
-
-                        // Close bottom sheet and open Meet mode
-                        Navigator.pop(context);
-                        if (!mounted) return;
-                        final createdAt = DateTime.now();
-                        Navigator.pushNamed(
-                          this.context,
-                          '/meet',
-                          arguments: {
-                            'invite_id': inviteId,
-                            'created_at': createdAt.toIso8601String(),
-                            'meeting_time': meetingTime.toIso8601String(),
-                            'place': place,
-                            'duration': duration,
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    isSv
-                        ? 'Nästa steg: Meet mode (Jag är här + timer).'
-                        : 'Next: Meet mode (I’m here + timer).',
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      setState(() => _loading = true);
+      await _createOpenInvite(
+        activity: activity,
+        duration: duration,
+        meetingTime: meetingTime,
+        place: place,
       );
+
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil('/hub', (route) => false);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -332,7 +278,7 @@ class _MatchScreenState extends State<MatchScreen> {
     final matches = [_cardForSelectedActivity()];
 
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Matches', 'Matchningar'))),
+      appBar: AppBar(title: Text(_t('Create invite', 'Skapa inbjudan'))),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -499,40 +445,6 @@ class _InfoEditRow extends StatelessWidget {
             ),
             const Icon(Icons.edit, size: 16, color: Colors.black45),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InviteTile extends StatelessWidget {
-  final String text;
-  final String activity;
-  final int duration;
-  final Future<void> Function() onTap;
-
-  const _InviteTile({
-    required this.text,
-    required this.activity,
-    required this.duration,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () async => onTap(),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.black12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(text, style: const TextStyle(fontSize: 16)),
         ),
       ),
     );

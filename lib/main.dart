@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'state/app_state.dart';
@@ -47,7 +48,11 @@ class _NotAloneAppState extends State<NotAloneApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'Social',
-          theme: ThemeData(useMaterial3: true),
+          theme: ThemeData(
+            useMaterial3: true,
+            textTheme: GoogleFonts.interTextTheme(),
+            primaryTextTheme: GoogleFonts.interTextTheme(),
+          ),
           locale: _appState.locale,
           routes: {
             '/': (_) => user == null
