@@ -242,6 +242,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  String _countLabel(Map<String, dynamic> invite) {
+    final mode = _normalizeMode((invite['mode'] ?? '').toString());
+    final maxParticipants = (invite['max_participants'] as num?)?.toInt();
+    final count = mode == 'one_to_one' ? 1 : maxParticipants;
+    final value = count?.toString() ?? '-';
+    return isSv ? 'Max antal: $value' : 'Max participants: $value';
+  }
+
   String _formatDateTime(dynamic raw) {
     if (raw == null) return _t('Not set', 'Inte satt');
     final parsed = DateTime.tryParse(raw.toString());
@@ -385,37 +393,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     labelText: isSv ? 'Aktivitet' : 'Activity',
                     border: const OutlineInputBorder(),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Alla / All')),
-                    DropdownMenuItem(
-                        value: 'walk', child: Text('Promenad / Walk')),
-                    DropdownMenuItem(value: 'workout', child: Text('Träna / Workout')),
+                  items: [
+                    DropdownMenuItem(value: 'all', child: Text(isSv ? 'Alla' : 'All')),
+                    DropdownMenuItem(value: 'walk', child: Text(isSv ? 'Promenad' : 'Walk')),
+                    DropdownMenuItem(value: 'workout', child: Text(isSv ? 'Träna' : 'Workout')),
                     DropdownMenuItem(value: 'coffee', child: Text('Fika')),
-                    DropdownMenuItem(value: 'lunch', child: Text('Luncha / Lunch')),
-                    DropdownMenuItem(value: 'dinner', child: Text('Middag / Dinner')),
+                    DropdownMenuItem(value: 'lunch', child: Text(isSv ? 'Luncha' : 'Lunch')),
+                    DropdownMenuItem(value: 'dinner', child: Text(isSv ? 'Middag' : 'Dinner')),
                   ],
                   onChanged: (v) {
                     setState(() {
                       _activity = v ?? 'all';
-                    });
-                  },
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: _mode,
-                  decoration: InputDecoration(
-                    labelText: isSv ? 'Läge' : 'Mode',
-                    border: const OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Alla / All')),
-                    DropdownMenuItem(value: 'one_to_one', child: Text('1:1')),
-                    DropdownMenuItem(
-                        value: 'group', child: Text('Grupp / Group')),
-                  ],
-                  onChanged: (v) {
-                    setState(() {
-                      _mode = v ?? 'all';
                     });
                   },
                 ),
@@ -474,7 +462,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    '${_activityLabel(it['activity'])} • ${_modeLabel(it['mode'])} • ${it['duration']} min',
+                                    _activityLabel(it['activity']),
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700, fontSize: 16),
                                   ),
@@ -517,9 +505,19 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               ],
                             ),
                             const SizedBox(height: 6),
-                            Text(
-                              isSv ? 'Prat: ${it['talk_level']}' : 'Talk: ${it['talk_level']}',
-                              style: const TextStyle(color: Colors.black54),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _countLabel(it),
+                                    style: const TextStyle(color: Colors.black54),
+                                  ),
+                                ),
+                                Text(
+                                  '${it['duration']} min',
+                                  style: const TextStyle(color: Colors.black54),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 6),
                             Text(
