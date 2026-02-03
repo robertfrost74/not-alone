@@ -31,34 +31,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
     final res = await Supabase.instance.client
         .from('invites')
-        .select('id, host_user_id, created_at, activity, mode, energy, talk_level, duration, place, meeting_time')
+        .select(
+            'id, host_user_id, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status)')
         .match(where)
         .order('created_at', ascending: false)
         .limit(50);
 
     final invites = (res as List).cast<Map<String, dynamic>>();
     if (invites.isEmpty) return invites;
-
-    final counts = await Future.wait(
-      invites.map((invite) => _acceptedCountForInvite(invite['id']?.toString() ?? '')),
-    );
-
-    for (var i = 0; i < invites.length; i++) {
-      invites[i]['accepted_count'] = counts[i];
+    for (final invite in invites) {
+      final members = (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      invite['accepted_count'] =
+          members.where((member) => member['status']?.toString() != 'cannot_attend').length;
     }
     return invites;
-  }
-
-  Future<int> _acceptedCountForInvite(String inviteId) async {
-    if (inviteId.isEmpty) return 0;
-    final res = await Supabase.instance.client
-        .from('invite_members')
-        .select('status')
-        .match({'invite_id': inviteId});
-    final rows = (res as List).cast<Map<String, dynamic>>();
-    return rows
-        .where((row) => row['status']?.toString() != 'cannot_attend')
-        .length;
   }
 
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
