@@ -270,7 +270,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     DropdownMenuItem(value: 'lunch', child: Text('Luncha / Lunch')),
                     DropdownMenuItem(value: 'dinner', child: Text('Middag / Dinner')),
                   ],
-                  onChanged: (v) => setState(() => _activity = v ?? 'all'),
+                  onChanged: (v) {
+                    _activity = v ?? 'all';
+                    _reloadInvites();
+                  },
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
@@ -285,7 +288,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     DropdownMenuItem(
                         value: 'group', child: Text('Grupp / Group')),
                   ],
-                  onChanged: (v) => setState(() => _mode = v ?? 'all'),
+                  onChanged: (v) {
+                    _mode = v ?? 'all';
+                    _reloadInvites();
+                  },
                 ),
               ],
             ),
