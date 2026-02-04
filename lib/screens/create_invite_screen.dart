@@ -194,7 +194,8 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                   _ChoiceOption(value: '4', label: '4'),
                   _ChoiceOption(value: '6', label: '6'),
                 ],
-                onChanged: (value) => setState(() => _maxParticipants = int.parse(value)),
+                onChanged: (value) =>
+                    setState(() => _maxParticipants = int.parse(value)),
               ),
             ],
             const SizedBox(height: 14),
@@ -216,7 +217,8 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
               selected: _talkLevel,
               options: [
                 _ChoiceOption(value: 'low', label: _t('Quiet', 'Tyst')),
-                _ChoiceOption(value: 'medium', label: _t('Some talk', 'Lite prat')),
+                _ChoiceOption(
+                    value: 'medium', label: _t('Some talk', 'Lite prat')),
                 _ChoiceOption(value: 'high', label: _t('Social', 'Social')),
               ],
               onChanged: (value) => setState(() => _talkLevel = value),
@@ -235,7 +237,8 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                 children: [
                   Text(
                     '$_duration min',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   Slider(
                     min: 10,
@@ -243,7 +246,8 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                     divisions: 110,
                     value: _duration.toDouble(),
                     label: '$_duration min',
-                    onChanged: (value) => setState(() => _duration = value.round()),
+                    onChanged: (value) =>
+                        setState(() => _duration = value.round()),
                   ),
                 ],
               ),
@@ -265,7 +269,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            _SectionTitle(title: _t('Place', 'Plats')),
+            _SectionTitle(title: _t('Meeting place', 'Mötesplats')),
             const SizedBox(height: 8),
             TextField(
               controller: _placeController,

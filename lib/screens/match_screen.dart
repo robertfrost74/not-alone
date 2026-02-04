@@ -41,7 +41,8 @@ class _MatchScreenState extends State<MatchScreen> {
     super.dispose();
   }
 
-  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) =>
+      widget.appState.locale.languageCode == 'sv' ? sv : en;
 
   String _activityLabel(String activity) {
     switch (activity) {
@@ -82,13 +83,19 @@ class _MatchScreenState extends State<MatchScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${isSv ? 'Aktivitet' : 'Activity'}: ${_activityLabel(activity)}'),
-              Text('${isSv ? 'Tidpunkt' : 'Time'}: ${_formatDateTime(meetingTime)}'),
-              Text('${isSv ? 'Plats' : 'Place'}: $place'),
-              Text('${isSv ? 'Längd' : 'Duration'}: $duration ${isSv ? 'min' : 'min'}'),
-              Text('${isSv ? 'Antal' : 'Mode'}: ${_modeLabel(widget.selectedMode)}'),
-              if (widget.selectedMode == 'group' && widget.selectedMaxParticipants != null)
-                Text('${isSv ? 'Max antal' : 'Max participants'}: ${widget.selectedMaxParticipants}'),
+              Text(
+                  '${isSv ? 'Aktivitet' : 'Activity'}: ${_activityLabel(activity)}'),
+              Text(
+                  '${isSv ? 'Tidpunkt' : 'Time'}: ${_formatDateTime(meetingTime)}'),
+              Text('${isSv ? 'Mötesplats' : 'Meeting place'}: $place'),
+              Text(
+                  '${isSv ? 'Längd' : 'Duration'}: $duration ${isSv ? 'min' : 'min'}'),
+              Text(
+                  '${isSv ? 'Antal' : 'Mode'}: ${_modeLabel(widget.selectedMode)}'),
+              if (widget.selectedMode == 'group' &&
+                  widget.selectedMaxParticipants != null)
+                Text(
+                    '${isSv ? 'Max antal' : 'Max participants'}: ${widget.selectedMaxParticipants}'),
             ],
           ),
           actions: [
@@ -168,18 +175,24 @@ class _MatchScreenState extends State<MatchScreen> {
     required String place,
   }) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    final data = await Supabase.instance.client.from('invites').insert({
-      'host_user_id': userId,
-      'activity': activity,
-      'mode': widget.selectedMode,
-      'max_participants': widget.selectedMode == 'group' ? widget.selectedMaxParticipants : null,
-      'energy': widget.selectedEnergy,
-      'talk_level': 'low',
-      'duration': duration,
-      'meeting_time': meetingTime.toIso8601String(),
-      'place': place,
-      'status': 'open',
-    }).select('id').single();
+    final data = await Supabase.instance.client
+        .from('invites')
+        .insert({
+          'host_user_id': userId,
+          'activity': activity,
+          'mode': widget.selectedMode,
+          'max_participants': widget.selectedMode == 'group'
+              ? widget.selectedMaxParticipants
+              : null,
+          'energy': widget.selectedEnergy,
+          'talk_level': 'low',
+          'duration': duration,
+          'meeting_time': meetingTime.toIso8601String(),
+          'place': place,
+          'status': 'open',
+        })
+        .select('id')
+        .single();
 
     return data['id']?.toString();
   }
@@ -191,7 +204,9 @@ class _MatchScreenState extends State<MatchScreen> {
     final meetingTime = _inviteMeetingTime;
     if (meetingTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_t('Pick meeting time first', 'Välj tidpunkt först'))),
+        SnackBar(
+            content:
+                Text(_t('Pick meeting time first', 'Välj tidpunkt först'))),
       );
       return;
     }
@@ -199,7 +214,9 @@ class _MatchScreenState extends State<MatchScreen> {
     final place = _invitePlaceController.text.trim();
     if (place.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_t('Enter meeting place first', 'Skriv in mötesplats först'))),
+        SnackBar(
+            content: Text(
+                _t('Enter meeting place first', 'Skriv in mötesplats först'))),
       );
       return;
     }
@@ -245,7 +262,8 @@ class _MatchScreenState extends State<MatchScreen> {
   Future<void> _pickInviteMeetingTime() async {
     final isSv = widget.appState.locale.languageCode == 'sv';
     final now = DateTime.now();
-    final initialMeetingTime = _inviteMeetingTime ?? now.add(const Duration(minutes: 10));
+    final initialMeetingTime =
+        _inviteMeetingTime ?? now.add(const Duration(minutes: 10));
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: initialMeetingTime,
@@ -285,7 +303,8 @@ class _MatchScreenState extends State<MatchScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _t('People nearby with the same vibe', 'Personer nära med samma vibe'),
+              _t('People nearby with the same vibe',
+                  'Personer nära med samma vibe'),
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
@@ -304,12 +323,15 @@ class _MatchScreenState extends State<MatchScreen> {
                     timeLabel: _inviteMeetingTime == null
                         ? _t('Pick meeting time', 'Välj tidpunkt')
                         : _formatDateTime(_inviteMeetingTime!),
-                    placeFieldLabel: _t('Place', 'Plats'),
+                    placeFieldLabel: _t('Meeting place', 'Mötesplats'),
                     placeController: _invitePlaceController,
                     placeHint: _t('Enter meeting place', 'Skriv in mötesplats'),
                     onEditTime: _pickInviteMeetingTime,
                     buttonText: _t('Send invite', 'Skicka inbjudan'),
-                    onInvite: _loading ? null : () => _onInvitePressed(activity: m.activity, duration: m.duration),
+                    onInvite: _loading
+                        ? null
+                        : () => _onInvitePressed(
+                            activity: m.activity, duration: m.duration),
                   );
                 },
               ),
@@ -373,12 +395,18 @@ class _MatchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(vibe, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(vibe,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: Text(distance, style: const TextStyle(color: Colors.black54))),
-              Expanded(child: Text(reliability, style: const TextStyle(color: Colors.black54))),
+              Expanded(
+                  child: Text(distance,
+                      style: const TextStyle(color: Colors.black54))),
+              Expanded(
+                  child: Text(reliability,
+                      style: const TextStyle(color: Colors.black54))),
             ],
           ),
           const SizedBox(height: 14),

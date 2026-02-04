@@ -573,7 +573,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             ),
                             if (place.isNotEmpty) ...[
                               const SizedBox(height: 6),
-                              Text(isSv ? 'Plats: $place' : 'Place: $place'),
+                              Text(
+                                isSv
+                                    ? 'Mötesplats: $place'
+                                    : 'Meeting place: $place',
+                              ),
                             ],
                             const SizedBox(height: 12),
                             SizedBox(

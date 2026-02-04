@@ -44,14 +44,16 @@ class _MeetScreenState extends State<MeetScreen> {
   double _meetingProgress = 0;
   String? _meetupId;
 
-  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) =>
+      widget.appState.locale.languageCode == 'sv' ? sv : en;
   bool get _hasPlace => _placeName.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     // MVP defaults:
-    _meetingTime = widget.initialMeetingTime ?? DateTime.now().add(const Duration(minutes: 10));
+    _meetingTime = widget.initialMeetingTime ??
+        DateTime.now().add(const Duration(minutes: 10));
     _placeName = (widget.initialPlace ?? '').trim();
     _remainingSeconds = widget.minutes * 60;
     _startMeetingCountdown();
@@ -99,11 +101,11 @@ class _MeetScreenState extends State<MeetScreen> {
       final now = DateTime.now();
       final totalWindow = meetingTime.difference(createdAt).inSeconds;
       final elapsed = now.difference(createdAt).inSeconds;
-      final progress = totalWindow <= 0
-          ? 1.0
-          : (elapsed / totalWindow).clamp(0.0, 1.0);
+      final progress =
+          totalWindow <= 0 ? 1.0 : (elapsed / totalWindow).clamp(0.0, 1.0);
       setState(() {
-        _meetingCountdownSeconds = meetingTime.difference(now).inSeconds.clamp(0, 999999);
+        _meetingCountdownSeconds =
+            meetingTime.difference(now).inSeconds.clamp(0, 999999);
         _meetingProgress = progress;
       });
     }
@@ -170,13 +172,15 @@ class _MeetScreenState extends State<MeetScreen> {
               children: [
                 Text(
                   isSv ? 'Mötesplats' : 'Meeting place',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: controller,
                   decoration: InputDecoration(
-                    hintText: isSv ? 'Skriv in mötesplats' : 'Enter meeting place',
+                    hintText:
+                        isSv ? 'Skriv in mötesplats' : 'Enter meeting place',
                     border: const OutlineInputBorder(),
                   ),
                   autofocus: true,
@@ -186,7 +190,8 @@ class _MeetScreenState extends State<MeetScreen> {
                 SizedBox(
                   height: 48,
                   child: FilledButton(
-                    onPressed: () => Navigator.pop(context, controller.text.trim()),
+                    onPressed: () =>
+                        Navigator.pop(context, controller.text.trim()),
                     child: Text(isSv ? 'Spara' : 'Save'),
                   ),
                 ),
@@ -223,12 +228,16 @@ class _MeetScreenState extends State<MeetScreen> {
       }
 
       if (_meetupId == null) {
-        final inserted = await Supabase.instance.client.from('meetups').insert({
-          'invite_id': inviteId,
-          'invite_member_id': inviteMemberId,
-          'user_id': Supabase.instance.client.auth.currentUser?.id,
-          'started_at': DateTime.now().toIso8601String(),
-        }).select('id').single();
+        final inserted = await Supabase.instance.client
+            .from('meetups')
+            .insert({
+              'invite_id': inviteId,
+              'invite_member_id': inviteMemberId,
+              'user_id': Supabase.instance.client.auth.currentUser?.id,
+              'started_at': DateTime.now().toIso8601String(),
+            })
+            .select('id')
+            .single();
 
         _meetupId = inserted['id']?.toString();
       } else {
@@ -241,7 +250,8 @@ class _MeetScreenState extends State<MeetScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
+        SnackBar(
+            content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
       );
     }
   }
@@ -256,7 +266,8 @@ class _MeetScreenState extends State<MeetScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
+        SnackBar(
+            content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
       );
     }
   }
@@ -273,7 +284,8 @@ class _MeetScreenState extends State<MeetScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
+        SnackBar(
+            content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e')),
       );
     }
   }
@@ -283,7 +295,9 @@ class _MeetScreenState extends State<MeetScreen> {
     if (!_hasPlace) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_t('Enter meeting place first', 'Skriv in mötesplats först'))),
+        SnackBar(
+            content: Text(
+                _t('Enter meeting place first', 'Skriv in mötesplats först'))),
       );
       return;
     }
@@ -326,9 +340,13 @@ class _MeetScreenState extends State<MeetScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                  Text(label,
+                      style:
+                          const TextStyle(color: Colors.black54, fontSize: 12)),
                   const SizedBox(height: 4),
-                  Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text(value,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -342,8 +360,12 @@ class _MeetScreenState extends State<MeetScreen> {
   @override
   Widget build(BuildContext context) {
     final isSv = widget.appState.locale.languageCode == 'sv';
-    final meetingTimeText = _meetingTime == null ? _t('Not set', 'Inte satt') : _formatDateTime(_meetingTime!);
-    final placeText = _placeName.isEmpty ? _t('Enter meeting place', 'Skriv in mötesplats') : _placeName;
+    final meetingTimeText = _meetingTime == null
+        ? _t('Not set', 'Inte satt')
+        : _formatDateTime(_meetingTime!);
+    final placeText = _placeName.isEmpty
+        ? _t('Enter meeting place', 'Skriv in mötesplats')
+        : _placeName;
 
     return Scaffold(
       appBar: AppBar(title: Text(isSv ? 'Möte' : 'Meet')),
@@ -367,7 +389,7 @@ class _MeetScreenState extends State<MeetScreen> {
             ),
             const SizedBox(height: 10),
             _infoRow(
-              isSv ? 'Plats' : 'Place',
+              isSv ? 'Mötesplats' : 'Meeting place',
               placeText,
               _editPlaceName,
             ),
@@ -383,7 +405,8 @@ class _MeetScreenState extends State<MeetScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _hmmss(_meetingCountdownSeconds),
-                  style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      fontSize: 44, fontWeight: FontWeight.w800),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
@@ -416,12 +439,15 @@ class _MeetScreenState extends State<MeetScreen> {
                   onPressed: !_hasPlace
                       ? null
                       : () async {
-                    await _startMeetMode();
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(this.context).showSnackBar(
-                      SnackBar(content: Text(isSv ? 'Markerad: Jag är här ✅' : 'Marked: I’m here ✅')),
-                    );
-                  },
+                          await _startMeetMode();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                                content: Text(isSv
+                                    ? 'Markerad: Jag är här ✅'
+                                    : 'Marked: I’m here ✅')),
+                          );
+                        },
                   child: Text(isSv ? 'Jag är här' : 'I’m here'),
                 ),
               ),
@@ -438,7 +464,10 @@ class _MeetScreenState extends State<MeetScreen> {
                   await _persistFinish();
                   if (!mounted) return;
                   ScaffoldMessenger.of(this.context).showSnackBar(
-                    SnackBar(content: Text(isSv ? 'Meddelande skickat: Kan inte komma' : 'Message sent: Cannot come')),
+                    SnackBar(
+                        content: Text(isSv
+                            ? 'Meddelande skickat: Kan inte komma'
+                            : 'Message sent: Cannot come')),
                   );
                   Navigator.pop(this.context);
                 },
@@ -449,7 +478,8 @@ class _MeetScreenState extends State<MeetScreen> {
               const SizedBox(height: 8),
               Text(
                 _mmss(_remainingSeconds),
-                style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w800),
+                style:
+                    const TextStyle(fontSize: 64, fontWeight: FontWeight.w800),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
