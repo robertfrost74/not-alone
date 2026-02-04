@@ -21,7 +21,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
   RealtimeChannel? _invitesChannel;
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
-  String _mode = 'all'; // all|one_to_one|group
 
   bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
@@ -90,9 +89,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
     if (invites.isEmpty) return invites;
 
     for (final invite in invites) {
-      final members = (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      invite['accepted_count'] =
-          members.where((member) => member['status']?.toString() != 'cannot_attend').length;
+      final members =
+          (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+              const [];
+      invite['accepted_count'] = members
+          .where((member) => member['status']?.toString() != 'cannot_attend')
+          .length;
     }
     return invites;
   }
@@ -110,9 +112,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   String _normalizeActivity(String value) {
     final normalized = value.trim().toLowerCase();
-    if (normalized == 'fika' || normalized == 'coffee' || normalized == 'kaffe') return 'coffee';
+    if (normalized == 'fika' ||
+        normalized == 'coffee' ||
+        normalized == 'kaffe') {
+      return 'coffee';
+    }
     if (normalized == 'promenad' || normalized == 'walk') return 'walk';
-    if (normalized == 'träna' || normalized == 'trana' || normalized == 'workout') return 'workout';
+    if (normalized == 'träna' ||
+        normalized == 'trana' ||
+        normalized == 'workout') {
+      return 'workout';
+    }
     if (normalized == 'lunch' || normalized == 'luncha') return 'lunch';
     if (normalized == 'middag' || normalized == 'dinner') return 'dinner';
     return normalized;
@@ -120,12 +130,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   bool _matchesFilters(Map<String, dynamic> invite) {
     if (_activity != 'all') {
-      final activity = _normalizeActivity((invite['activity'] ?? '').toString());
+      final activity =
+          _normalizeActivity((invite['activity'] ?? '').toString());
       if (activity != _normalizeActivity(_activity)) return false;
-    }
-    if (_mode != 'all') {
-      final mode = _normalizeMode((invite['mode'] ?? '').toString());
-      if (mode != _normalizeMode(_mode)) return false;
     }
     return true;
   }
@@ -141,11 +148,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
     setState(() => _joining = true);
     try {
-      final inserted = await Supabase.instance.client.from('invite_members').insert({
-        'invite_id': inviteId,
-        'user_id': Supabase.instance.client.auth.currentUser?.id,
-        'role': 'member',
-      }).select('id').single();
+      final inserted = await Supabase.instance.client
+          .from('invite_members')
+          .insert({
+            'invite_id': inviteId,
+            'user_id': Supabase.instance.client.auth.currentUser?.id,
+            'role': 'member',
+          })
+          .select('id')
+          .single();
 
       final inviteMemberId = inserted['id']?.toString();
 
@@ -181,7 +192,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
           builder: (dialogContext) {
             return AlertDialog(
               title: Text(_t('Remove invite?', 'Ta bort inbjudan?')),
-              content: Text(_t('This cannot be undone.', 'Detta kan inte ångras.')),
+              content:
+                  Text(_t('This cannot be undone.', 'Detta kan inte ångras.')),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
@@ -200,7 +212,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
     setState(() => _deleting = true);
     try {
-      await Supabase.instance.client.from('invites').delete().match({'id': inviteId});
+      await Supabase.instance.client
+          .from('invites')
+          .delete()
+          .match({'id': inviteId});
       if (!mounted) return;
       _reloadInvites();
     } catch (e) {
@@ -227,18 +242,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
         return isSv ? 'Middag' : 'Dinner';
       default:
         return a;
-    }
-  }
-
-  String _modeLabel(String m) {
-    switch (m) {
-      case 'one_to_one':
-      case '1to1':
-        return '1:1';
-      case 'group':
-        return isSv ? 'Grupp' : 'Group';
-      default:
-        return m;
     }
   }
 
@@ -297,7 +300,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final accepted = (invite['accepted_count'] as int?) ?? 0;
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
-    final maxParticipants = rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
+    final maxParticipants =
+        rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
     final now = DateTime.now();
 
     if (meetingAt != null) {
@@ -395,12 +399,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     border: const OutlineInputBorder(),
                   ),
                   items: [
-                    DropdownMenuItem(value: 'all', child: Text(isSv ? 'Alla' : 'All')),
-                    DropdownMenuItem(value: 'walk', child: Text(isSv ? 'Promenad' : 'Walk')),
-                    DropdownMenuItem(value: 'workout', child: Text(isSv ? 'Träna' : 'Workout')),
-                    DropdownMenuItem(value: 'coffee', child: Text('Fika')),
-                    DropdownMenuItem(value: 'lunch', child: Text(isSv ? 'Luncha' : 'Lunch')),
-                    DropdownMenuItem(value: 'dinner', child: Text(isSv ? 'Middag' : 'Dinner')),
+                    DropdownMenuItem(
+                        value: 'all', child: Text(isSv ? 'Alla' : 'All')),
+                    DropdownMenuItem(
+                        value: 'walk', child: Text(isSv ? 'Promenad' : 'Walk')),
+                    DropdownMenuItem(
+                        value: 'workout',
+                        child: Text(isSv ? 'Träna' : 'Workout')),
+                    const DropdownMenuItem(
+                        value: 'coffee', child: Text('Fika')),
+                    DropdownMenuItem(
+                        value: 'lunch', child: Text(isSv ? 'Luncha' : 'Lunch')),
+                    DropdownMenuItem(
+                        value: 'dinner',
+                        child: Text(isSv ? 'Middag' : 'Dinner')),
                   ],
                   onChanged: (v) {
                     setState(() {
@@ -442,8 +454,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     itemBuilder: (context, i) {
                       final it = items[i];
                       final place = (it['place'] ?? '').toString();
-                      final meetingTimeLabel = _formatDateTime(it['meeting_time']);
-                      final timeProgress = _timeLeftProgress(it['created_at'], it['meeting_time']);
+                      final meetingTimeLabel =
+                          _formatDateTime(it['meeting_time']);
+                      final timeProgress = _timeLeftProgress(
+                          it['created_at'], it['meeting_time']);
                       final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
                       final status = _inviteStatus(it);
                       final canDelete = it['host_user_id']?.toString() ==
@@ -465,11 +479,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                   child: Text(
                                     _activityLabel(it['activity']),
                                     style: const TextStyle(
-                                        fontWeight: FontWeight.w700, fontSize: 16),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16),
                                   ),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.black12,
                                     borderRadius: BorderRadius.circular(999),
@@ -478,12 +494,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                     isSv
                                         ? '${it['accepted_count'] ?? 0} tackat ja'
                                         : '${it['accepted_count'] ?? 0} joined',
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600),
                                   ),
                                 ),
                                 const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: _statusColor(status),
                                     borderRadius: BorderRadius.circular(999),
@@ -493,7 +512,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: status == 'full' ? Colors.white : Colors.black87,
+                                      color: status == 'full'
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
@@ -501,10 +522,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                   const SizedBox(width: 8),
                                   IconButton(
                                     visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                                    onPressed: _deleting ? null : () => _deleteInvite(it),
-                                    icon: const Icon(Icons.delete_outline, size: 18),
-                                    tooltip: _t('Remove invite', 'Ta bort inbjudan'),
+                                    constraints: const BoxConstraints.tightFor(
+                                        width: 28, height: 28),
+                                    onPressed: _deleting
+                                        ? null
+                                        : () => _deleteInvite(it),
+                                    icon: const Icon(Icons.delete_outline,
+                                        size: 18),
+                                    tooltip:
+                                        _t('Remove invite', 'Ta bort inbjudan'),
                                   ),
                                 ],
                               ],
@@ -515,7 +541,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                 Expanded(
                                   child: Text(
                                     _countLabel(it),
-                                    style: const TextStyle(color: Colors.black54),
+                                    style:
+                                        const TextStyle(color: Colors.black54),
                                   ),
                                 ),
                                 Text(
@@ -526,7 +553,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              isSv ? 'Tid: $meetingTimeLabel' : 'Time: $meetingTimeLabel',
+                              isSv
+                                  ? 'Tid: $meetingTimeLabel'
+                                  : 'Time: $meetingTimeLabel',
                             ),
                             const SizedBox(height: 8),
                             ClipRRect(
@@ -539,7 +568,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             const SizedBox(height: 4),
                             Text(
                               timeLeftLabel,
-                              style: const TextStyle(color: Colors.black54, fontSize: 12),
+                              style: const TextStyle(
+                                  color: Colors.black54, fontSize: 12),
                             ),
                             if (place.isNotEmpty) ...[
                               const SizedBox(height: 6),
@@ -550,7 +580,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               width: double.infinity,
                               height: 44,
                               child: FilledButton(
-                                onPressed: _joining || !_canJoinStatus(status) ? null : () => _joinInvite(it),
+                                onPressed: _joining || !_canJoinStatus(status)
+                                    ? null
+                                    : () => _joinInvite(it),
                                 child: Text(_joinButtonLabel(status)),
                               ),
                             ),
