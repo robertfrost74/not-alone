@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import 'invites_screen.dart';
 import 'profile_screen.dart';
+import 'groups_screen.dart';
+import 'create_group_screen.dart';
 import 'request_screen.dart';
 import 'welcome_screen.dart';
 import '../widgets/social_chrome.dart';
@@ -52,6 +54,16 @@ class _HubScreenState extends State<HubScreen> {
       );
       return;
     }
+    if (value == 'groups') {
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupsScreen(appState: widget.appState),
+        ),
+      );
+      return;
+    }
     if (value == 'logout') {
       await _signOut();
     }
@@ -89,6 +101,24 @@ class _HubScreenState extends State<HubScreen> {
                       const SizedBox(width: 10),
                       Text(
                         _t('Profile', 'Profil'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'groups',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.groups_outlined,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Groups', 'Grupper'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -141,6 +171,22 @@ class _HubScreenState extends State<HubScreen> {
                           );
                         },
                         child: Text(_t('Create invite', 'Skapa inbjudan')),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  CreateGroupScreen(appState: widget.appState),
+                            ),
+                          );
+                        },
+                        child: Text(_t('Create group', 'Skapa grupp')),
                       ),
                     ),
                     const SizedBox(height: 16),
