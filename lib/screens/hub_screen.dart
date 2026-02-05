@@ -70,6 +70,7 @@ class _HubScreenState extends State<HubScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const SizedBox(height: 24),
                     SizedBox(
                       height: 52,
                       child: FilledButton(

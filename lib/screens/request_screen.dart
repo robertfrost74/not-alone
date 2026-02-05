@@ -222,7 +222,7 @@ class _RequestScreenState extends State<RequestScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 40),
                   SizedBox(
                     width: double.infinity,
                     height: 52,

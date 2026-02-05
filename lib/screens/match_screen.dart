@@ -86,12 +86,12 @@ class _MatchScreenState extends State<MatchScreen> {
           ),
           titleTextStyle: const TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
           ),
           contentTextStyle: const TextStyle(
             color: Colors.white70,
-            fontSize: 14,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
           title: Text(isSv ? 'Godkänn inbjudan' : 'Confirm invite'),
@@ -327,6 +327,7 @@ class _MatchScreenState extends State<MatchScreen> {
                       itemBuilder: (context, index) {
                         final m = matches[index];
                         return _MatchCard(
+                          timeFieldLabel: _t('Time', 'Tid'),
                           timeLabel: _inviteMeetingTime == null
                               ? _t('Pick meeting time', 'Välj tidpunkt')
                               : _formatDateTime(_inviteMeetingTime!),
@@ -367,6 +368,7 @@ class _MatchCardData {
 }
 
 class _MatchCard extends StatelessWidget {
+  final String timeFieldLabel;
   final String timeLabel;
   final String placeFieldLabel;
   final TextEditingController placeController;
@@ -376,6 +378,7 @@ class _MatchCard extends StatelessWidget {
   final VoidCallback? onInvite;
 
   const _MatchCard({
+    required this.timeFieldLabel,
     required this.timeLabel,
     required this.placeFieldLabel,
     required this.placeController,
@@ -397,19 +400,26 @@ class _MatchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            timeFieldLabel,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
           _InfoEditRow(
-            label: 'Time',
             value: timeLabel,
             onTap: onEditTime,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            placeFieldLabel,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: placeController,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              labelText: placeFieldLabel,
               hintText: placeHint,
-              labelStyle: const TextStyle(color: Colors.white70),
               hintStyle: const TextStyle(color: Colors.white54),
               enabledBorder: OutlineInputBorder(
                 borderSide: const BorderSide(color: Colors.white24),
@@ -421,7 +431,7 @@ class _MatchCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             height: 44,
@@ -437,12 +447,10 @@ class _MatchCard extends StatelessWidget {
 }
 
 class _InfoEditRow extends StatelessWidget {
-  final String label;
   final String value;
   final VoidCallback onTap;
 
   const _InfoEditRow({
-    required this.label,
     required this.value,
     required this.onTap,
   });
@@ -462,24 +470,13 @@ class _InfoEditRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: 8),

@@ -83,7 +83,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final res = await Supabase.instance.client
         .from('invites')
         .select(
-            'id, host_user_id, max_participants, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status)')
+            'id, host_user_id, max_participants, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status,user_id)')
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(50);
@@ -111,6 +111,77 @@ class _InvitesScreenState extends State<InvitesScreen> {
       return 'one_to_one';
     }
     return normalized;
+  }
+
+  List<String> _acceptedUsers(Map<String, dynamic> invite) {
+    final members =
+        (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    return members
+        .where((member) => member['status']?.toString() != 'cannot_attend')
+        .map((member) => member['user_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _showAcceptedUsersModal(Map<String, dynamic> invite) async {
+    final users = _acceptedUsers(invite);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: Colors.white24),
+          ),
+          titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
+          contentTextStyle: const TextStyle(
+            color: Colors.white70,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          title: Text(_t('Joined users', 'Tackat ja')),
+          content: users.isEmpty
+              ? Text(_t('No one has joined yet.', 'Ingen har tackat ja ännu.'))
+              : SizedBox(
+                  width: 320,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: users
+                          .map(
+                            (id) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                isSv
+                                    ? 'Användare ${id.substring(0, id.length < 8 ? id.length : 8)}'
+                                    : 'User ${id.substring(0, id.length < 8 ? id.length : 8)}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_t('Close', 'Stäng')),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   String _normalizeActivity(String value) {
@@ -208,12 +279,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
               ),
               titleTextStyle: const TextStyle(
                 color: Colors.white,
-                fontSize: 20,
+                fontSize: 22,
                 fontWeight: FontWeight.w700,
               ),
               contentTextStyle: const TextStyle(
                 color: Colors.white70,
-                fontSize: 14,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
               title: Text(_t('Remove invite?', 'Ta bort inbjudan?')),
@@ -286,6 +357,16 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final count = mode == 'one_to_one' ? 1 : maxParticipants;
     final value = count?.toString() ?? '-';
     return isSv ? 'Max antal: $value' : 'Max participants: $value';
+  }
+
+  String _joinedOfMaxLabel(Map<String, dynamic> invite) {
+    final accepted = (invite['accepted_count'] as int?) ?? 0;
+    final mode = _normalizeMode((invite['mode'] ?? '').toString());
+    final rawMax = invite['max_participants'];
+    final maxParticipants =
+        rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
+    final maxValue = mode == 'one_to_one' ? 1 : (maxParticipants ?? 0);
+    return '$accepted/$maxValue';
   }
 
   String _formatDateTime(dynamic raw) {
@@ -458,48 +539,76 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           ),
                         ),
                         dropdownColor: const Color(0xFF10201E),
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                         items: [
                           DropdownMenuItem(
                             value: 'all',
                             child: Text(
                               isSv ? 'Alla' : 'All',
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'walk',
                             child: Text(
                               isSv ? 'Promenad' : 'Walk',
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'workout',
                             child: Text(
                               isSv ? 'Träna' : 'Workout',
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           const DropdownMenuItem(
                             value: 'coffee',
                             child: Text(
                               'Fika',
-                              style: TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'lunch',
                             child: Text(
                               isSv ? 'Luncha' : 'Lunch',
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'dinner',
                             child: Text(
                               isSv ? 'Middag' : 'Dinner',
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],
@@ -573,32 +682,42 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                           _activityLabel(it['activity']),
                                           style: const TextStyle(
                                               fontWeight: FontWeight.w700,
-                                              fontSize: 16,
+                                              fontSize: 18,
                                               color: Colors.white),
                                         ),
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white24,
-                                          borderRadius:
-                                              BorderRadius.circular(999),
+                                      TextButton(
+                                        style: TextButton.styleFrom(
+                                          backgroundColor: Colors.white24,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10),
+                                          minimumSize: const Size(0, 28),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
                                         ),
+                                        onPressed: () =>
+                                            _showAcceptedUsersModal(it),
                                         child: Text(
-                                          isSv
-                                              ? '${it['accepted_count'] ?? 0} tackat ja'
-                                              : '${it['accepted_count'] ?? 0} joined',
+                                          _joinedOfMaxLabel(it),
                                           style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.white),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 6),
                                       Container(
+                                        constraints: const BoxConstraints(
+                                            minHeight: 28),
+                                        alignment: Alignment.center,
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
+                                            horizontal: 10),
                                         decoration: BoxDecoration(
                                           color: _statusColor(status),
                                           borderRadius:
@@ -607,7 +726,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         child: Text(
                                           _statusLabel(status),
                                           style: TextStyle(
-                                            fontSize: 12,
+                                            fontSize: 14,
                                             fontWeight: FontWeight.w700,
                                             color: status == 'full'
                                                 ? Colors.white
@@ -639,7 +758,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                           _countLabel(it),
                                           style: const TextStyle(
                                             color: Colors.white,
-                                            fontSize: 14,
+                                            fontSize: 16,
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -648,7 +767,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         '${it['duration']} min',
                                         style: const TextStyle(
                                           color: Colors.white,
-                                          fontSize: 14,
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -661,7 +780,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         : 'Time: $meetingTimeLabel',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 14,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -678,7 +797,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                     timeLeftLabel,
                                     style: const TextStyle(
                                       color: Colors.white70,
-                                      fontSize: 13,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -690,12 +809,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                           : 'Meeting place: $place',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 14,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: 20),
                                   SizedBox(
                                     width: double.infinity,
                                     height: 44,

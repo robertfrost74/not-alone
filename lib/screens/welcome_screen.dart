@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
@@ -26,6 +27,19 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   bool get _isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => _isSv ? sv : en;
 
+  void _normalizeEmailController(TextEditingController controller) {
+    final text = controller.text;
+    if (!text.contains('™')) return;
+    final normalized = text.replaceAll('™', '@');
+    final oldOffset = controller.selection.baseOffset;
+    final newOffset =
+        oldOffset > normalized.length ? normalized.length : oldOffset;
+    controller.value = TextEditingValue(
+      text: normalized,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -48,7 +62,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 Text(
                   _t('Choose language', 'Välj språk'),
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w700),
+                      fontSize: 20, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton(
@@ -162,11 +176,35 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
+          backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: Colors.white24),
+          ),
+          titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
+          contentTextStyle: const TextStyle(
+            color: Colors.white70,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
           title: Text(_t('Reset password', 'Återställ lösenord')),
           content: TextField(
             controller: inputController,
             keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.done,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            enableSuggestions: false,
+            smartDashesType: SmartDashesType.disabled,
+            smartQuotesType: SmartQuotesType.disabled,
+            autofillHints: const [AutofillHints.email],
             autofocus: true,
+            onChanged: (_) => _normalizeEmailController(inputController),
+            style: const TextStyle(fontSize: 16),
             decoration: InputDecoration(
               labelText: _t('Email', 'E-post'),
               hintText: 'name@example.com',
@@ -297,13 +335,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 34),
-                  const Text(
+                  Text(
                     'Social',
-                    style: TextStyle(
-                      fontSize: 62,
-                      fontWeight: FontWeight.w800,
+                    style: GoogleFonts.oleoScript(
+                      fontSize: 68,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF22D3EE),
-                      letterSpacing: -1.4,
+                      letterSpacing: -0.6,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -319,7 +357,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   Container(
                     width: double.infinity,
                     constraints: const BoxConstraints(maxWidth: 560),
-                    padding: const EdgeInsets.all(22),
+                    padding: const EdgeInsets.fromLTRB(22, 30, 22, 22),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(24),
@@ -329,19 +367,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const SizedBox(height: 6),
-                        Text(
-                          _isSignUp
-                              ? _t('Sign up', 'Registrera dig')
-                              : _t('Sign in', 'Logga in'),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
                         Text(
                           _t('Email', 'E-post'),
                           style: const TextStyle(
@@ -352,6 +377,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                           controller: _emailController,
                           enabled: !_loading,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          textCapitalization: TextCapitalization.none,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          smartDashesType: SmartDashesType.disabled,
+                          smartQuotesType: SmartQuotesType.disabled,
+                          autofillHints: const [AutofillHints.email],
+                          onChanged: (_) =>
+                              _normalizeEmailController(_emailController),
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             prefixIcon: const Icon(Icons.email_outlined,
@@ -427,7 +461,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 28),
                         SizedBox(
                           height: 56,
                           child: FilledButton(

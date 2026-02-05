@@ -174,11 +174,12 @@ class _MeetScreenState extends State<MeetScreen> {
                 Text(
                   isSv ? 'Mötesplats' : 'Meeting place',
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w700),
+                      fontSize: 20, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: controller,
+                  style: const TextStyle(fontSize: 16),
                   decoration: InputDecoration(
                     hintText:
                         isSv ? 'Skriv in mötesplats' : 'Enter meeting place',
@@ -441,7 +442,7 @@ class _MeetScreenState extends State<MeetScreen> {
                       style: const TextStyle(color: Colors.white70),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 24),
                     SizedBox(
                       height: 56,
                       child: FilledButton(
@@ -460,7 +461,7 @@ class _MeetScreenState extends State<MeetScreen> {
                         child: Text(isSv ? 'Jag är här' : 'I’m here'),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     OutlinedButton(
                       onPressed:
                           !_hasPlace ? null : () async => _startMeetMode(),
