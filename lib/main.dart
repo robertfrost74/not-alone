@@ -49,10 +49,43 @@ class _NotAloneAppState extends State<NotAloneApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'Social',
+          color: const Color(0xFF2DD4CF),
           theme: ThemeData(
             useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF2DD4CF),
+            ),
             textTheme: GoogleFonts.interTextTheme(),
             primaryTextTheme: GoogleFonts.interTextTheme(),
+            filledButtonTheme: FilledButtonThemeData(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2DD4CF),
+                foregroundColor: Colors.black,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            outlinedButtonTheme: OutlinedButtonThemeData(
+              style: OutlinedButton.styleFrom(
+                backgroundColor: const Color(0xFF0E1D1C),
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Color(0xFF2DD4CF)),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
           ),
           locale: _appState.locale,
           localizationsDelegates: const [

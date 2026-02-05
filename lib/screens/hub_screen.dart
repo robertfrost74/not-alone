@@ -4,6 +4,7 @@ import '../state/app_state.dart';
 import 'invites_screen.dart';
 import 'request_screen.dart';
 import 'welcome_screen.dart';
+import '../widgets/social_chrome.dart';
 
 class HubScreen extends StatefulWidget {
   final AppState appState;
@@ -44,56 +45,66 @@ class _HubScreenState extends State<HubScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           automaticallyImplyLeading: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.white,
           title: Text(_t('Choose next step', 'Välj nästa steg')),
           actions: [
             TextButton(
               onPressed: _loading ? null : _signOut,
-              child: Text(_t('Sign out', 'Logga ut')),
+              child: Text(
+                _t('Sign out', 'Logga ut'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                _t('What do you want to do now?', 'Vad vill du göra nu?'),
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => RequestScreen(appState: widget.appState),
+        body: SocialBackground(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: SocialPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  RequestScreen(appState: widget.appState),
+                            ),
+                          );
+                        },
+                        child: Text(_t('Create invite', 'Skapa inbjudan')),
                       ),
-                    );
-                  },
-                  child: Text(_t('Create invite', 'Skapa inbjudan')),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  InvitesScreen(appState: widget.appState),
+                            ),
+                          );
+                        },
+                        child: Text(_t('Browse invites', 'Se inbjudningar')),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => InvitesScreen(appState: widget.appState),
-                      ),
-                    );
-                  },
-                  child: Text(_t('Browse invites', 'Se inbjudningar')),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

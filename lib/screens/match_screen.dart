@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import '../widgets/social_chrome.dart';
 
 class MatchScreen extends StatefulWidget {
   final AppState appState;
@@ -296,47 +297,63 @@ class _MatchScreenState extends State<MatchScreen> {
     final matches = [_cardForSelectedActivity()];
 
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Create invite', 'Skapa inbjudan'))),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _t('People nearby with the same vibe',
-                  'Personer nära med samma vibe'),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            if (_loading) const LinearProgressIndicator(),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.separated(
-                itemCount: matches.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final m = matches[index];
-                  return _MatchCard(
-                    vibe: m.vibe,
-                    distance: m.distance,
-                    reliability: m.reliability,
-                    timeLabel: _inviteMeetingTime == null
-                        ? _t('Pick meeting time', 'Välj tidpunkt')
-                        : _formatDateTime(_inviteMeetingTime!),
-                    placeFieldLabel: _t('Meeting place', 'Mötesplats'),
-                    placeController: _invitePlaceController,
-                    placeHint: _t('Enter meeting place', 'Skriv in mötesplats'),
-                    onEditTime: _pickInviteMeetingTime,
-                    buttonText: _t('Send invite', 'Skicka inbjudan'),
-                    onInvite: _loading
-                        ? null
-                        : () => _onInvitePressed(
-                            activity: m.activity, duration: m.duration),
-                  );
-                },
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(_t('Create invite', 'Skapa inbjudan')),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
+      ),
+      body: SocialBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SocialPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _t('People nearby with the same vibe',
+                        'Personer nära med samma vibe'),
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_loading) const LinearProgressIndicator(),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: matches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final m = matches[index];
+                        return _MatchCard(
+                          vibe: m.vibe,
+                          distance: m.distance,
+                          reliability: m.reliability,
+                          timeLabel: _inviteMeetingTime == null
+                              ? _t('Pick meeting time', 'Välj tidpunkt')
+                              : _formatDateTime(_inviteMeetingTime!),
+                          placeFieldLabel: _t('Meeting place', 'Mötesplats'),
+                          placeController: _invitePlaceController,
+                          placeHint:
+                              _t('Enter meeting place', 'Skriv in mötesplats'),
+                          onEditTime: _pickInviteMeetingTime,
+                          buttonText: _t('Send invite', 'Skicka inbjudan'),
+                          onInvite: _loading
+                              ? null
+                              : () => _onInvitePressed(
+                                    activity: m.activity,
+                                    duration: m.duration,
+                                  ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -389,7 +406,8 @@ class _MatchCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
+        color: Colors.white.withValues(alpha: 0.08),
+        border: Border.all(color: Colors.white24),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -403,10 +421,10 @@ class _MatchCard extends StatelessWidget {
             children: [
               Expanded(
                   child: Text(distance,
-                      style: const TextStyle(color: Colors.black54))),
+                      style: const TextStyle(color: Colors.white70))),
               Expanded(
                   child: Text(reliability,
-                      style: const TextStyle(color: Colors.black54))),
+                      style: const TextStyle(color: Colors.white70))),
             ],
           ),
           const SizedBox(height: 14),
@@ -418,10 +436,20 @@ class _MatchCard extends StatelessWidget {
           const SizedBox(height: 8),
           TextField(
             controller: placeController,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               labelText: placeFieldLabel,
               hintText: placeHint,
-              border: const OutlineInputBorder(),
+              labelStyle: const TextStyle(color: Colors.white70),
+              hintStyle: const TextStyle(color: Colors.white54),
+              enabledBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: Colors.white24),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: Color(0xFF2DD4CF)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
           const SizedBox(height: 14),
@@ -458,12 +486,12 @@ class _InfoEditRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.black12),
+          border: Border.all(color: Colors.white24),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Text('$label: ', style: const TextStyle(color: Colors.black54)),
+            Text('$label: ', style: const TextStyle(color: Colors.white70)),
             Expanded(
               child: Text(
                 value,
@@ -471,7 +499,7 @@ class _InfoEditRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Icon(Icons.edit, size: 16, color: Colors.black45),
+            const Icon(Icons.edit, size: 16, color: Colors.white60),
           ],
         ),
       ),

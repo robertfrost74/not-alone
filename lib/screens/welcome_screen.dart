@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
+import '../widgets/social_chrome.dart';
 
 class WelcomeScreen extends StatefulWidget {
   final AppState appState;
@@ -231,6 +232,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       backgroundColor: const Color(0xFF030608),
       body: Stack(
         children: [
+          const SocialBackground(
+            showOrbs: false,
+            child: SizedBox.expand(),
+          ),
           Positioned(
             top: -120,
             left: -80,
@@ -309,16 +314,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       color: Colors.white,
                       fontWeight: FontWeight.w500,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _t(
-                      'The modern way to stay connected with the people who matter most.',
-                      'Ett modernt satt att halla kontakten med de som betyder mest.',
-                    ),
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(fontSize: 15, color: textMuted, height: 1.35),
                   ),
                   const SizedBox(height: 28),
                   Container(

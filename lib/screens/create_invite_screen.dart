@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import '../widgets/social_chrome.dart';
 
 class CreateInviteScreen extends StatefulWidget {
   final AppState appState;
@@ -140,156 +141,186 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_t('Create invite', 'Skapa inbjudan'))),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionTitle(title: _t('Activity', 'Aktivitet')),
-            const SizedBox(height: 8),
-            _ChoiceWrap(
-              selected: _activity,
-              options: [
-                _ChoiceOption(value: 'walk', label: _t('Walk', 'Promenad')),
-                _ChoiceOption(value: 'workout', label: _t('Workout', 'Träna')),
-                _ChoiceOption(value: 'coffee', label: _t('Fika', 'Fika')),
-                _ChoiceOption(value: 'lunch', label: _t('Lunch', 'Luncha')),
-                _ChoiceOption(value: 'dinner', label: _t('Dinner', 'Middag')),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  final oldDefault = _defaultPlace(_activity);
-                  _activity = value;
-                  if (_placeController.text.trim().isEmpty ||
-                      _placeController.text.trim() == oldDefault) {
-                    _placeController.text = _defaultPlace(value);
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 14),
-            _SectionTitle(title: _t('Mode', 'Lage')),
-            const SizedBox(height: 8),
-            _ChoiceWrap(
-              selected: _mode,
-              options: [
-                const _ChoiceOption(value: '1to1', label: '1:1'),
-                _ChoiceOption(value: 'group', label: _t('Group', 'Grupp')),
-              ],
-              onChanged: (value) => setState(() {
-                _mode = value;
-                if (_mode != 'group') _maxParticipants = null;
-              }),
-            ),
-            if (_mode == 'group') ...[
-              const SizedBox(height: 12),
-              _SectionTitle(title: _t('Max participants', 'Max antal')),
-              const SizedBox(height: 8),
-              _ChoiceWrap(
-                selected: (_maxParticipants ?? '').toString(),
-                options: const [
-                  _ChoiceOption(value: '2', label: '2'),
-                  _ChoiceOption(value: '3', label: '3'),
-                  _ChoiceOption(value: '4', label: '4'),
-                  _ChoiceOption(value: '6', label: '6'),
-                ],
-                onChanged: (value) =>
-                    setState(() => _maxParticipants = int.parse(value)),
-              ),
-            ],
-            const SizedBox(height: 14),
-            _SectionTitle(title: _t('Energy', 'Energi')),
-            const SizedBox(height: 8),
-            _ChoiceWrap(
-              selected: _energy,
-              options: [
-                _ChoiceOption(value: 'low', label: _t('Low', 'Lag')),
-                _ChoiceOption(value: 'medium', label: _t('Medium', 'Mellan')),
-                _ChoiceOption(value: 'high', label: _t('High', 'Hog')),
-              ],
-              onChanged: (value) => setState(() => _energy = value),
-            ),
-            const SizedBox(height: 14),
-            _SectionTitle(title: _t('Talk level', 'Pratniva')),
-            const SizedBox(height: 8),
-            _ChoiceWrap(
-              selected: _talkLevel,
-              options: [
-                _ChoiceOption(value: 'low', label: _t('Quiet', 'Tyst')),
-                _ChoiceOption(
-                    value: 'medium', label: _t('Some talk', 'Lite prat')),
-                _ChoiceOption(value: 'high', label: _t('Social', 'Social')),
-              ],
-              onChanged: (value) => setState(() => _talkLevel = value),
-            ),
-            const SizedBox(height: 14),
-            _SectionTitle(title: _t('Duration', 'Langd')),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black12),
-                borderRadius: BorderRadius.circular(12),
-              ),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(_t('Create invite', 'Skapa inbjudan')),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
+      ),
+      body: SocialBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SocialPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '$_duration min',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                  _SectionTitle(title: _t('Activity', 'Aktivitet')),
+                  const SizedBox(height: 8),
+                  _ChoiceWrap(
+                    selected: _activity,
+                    options: [
+                      _ChoiceOption(
+                          value: 'walk', label: _t('Walk', 'Promenad')),
+                      _ChoiceOption(
+                          value: 'workout', label: _t('Workout', 'Träna')),
+                      _ChoiceOption(value: 'coffee', label: _t('Fika', 'Fika')),
+                      _ChoiceOption(
+                          value: 'lunch', label: _t('Lunch', 'Luncha')),
+                      _ChoiceOption(
+                          value: 'dinner', label: _t('Dinner', 'Middag')),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        final oldDefault = _defaultPlace(_activity);
+                        _activity = value;
+                        if (_placeController.text.trim().isEmpty ||
+                            _placeController.text.trim() == oldDefault) {
+                          _placeController.text = _defaultPlace(value);
+                        }
+                      });
+                    },
                   ),
-                  Slider(
-                    min: 10,
-                    max: 120,
-                    divisions: 110,
-                    value: _duration.toDouble(),
-                    label: '$_duration min',
-                    onChanged: (value) =>
-                        setState(() => _duration = value.round()),
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Mode', 'Lage')),
+                  const SizedBox(height: 8),
+                  _ChoiceWrap(
+                    selected: _mode,
+                    options: [
+                      const _ChoiceOption(value: '1to1', label: '1:1'),
+                      _ChoiceOption(
+                          value: 'group', label: _t('Group', 'Grupp')),
+                    ],
+                    onChanged: (value) => setState(() {
+                      _mode = value;
+                      if (_mode != 'group') _maxParticipants = null;
+                    }),
+                  ),
+                  if (_mode == 'group') ...[
+                    const SizedBox(height: 12),
+                    _SectionTitle(title: _t('Max participants', 'Max antal')),
+                    const SizedBox(height: 8),
+                    _ChoiceWrap(
+                      selected: (_maxParticipants ?? '').toString(),
+                      options: const [
+                        _ChoiceOption(value: '2', label: '2'),
+                        _ChoiceOption(value: '3', label: '3'),
+                        _ChoiceOption(value: '4', label: '4'),
+                        _ChoiceOption(value: '6', label: '6'),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _maxParticipants = int.parse(value)),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Energy', 'Energi')),
+                  const SizedBox(height: 8),
+                  _ChoiceWrap(
+                    selected: _energy,
+                    options: [
+                      _ChoiceOption(value: 'low', label: _t('Low', 'Lag')),
+                      _ChoiceOption(
+                          value: 'medium', label: _t('Medium', 'Mellan')),
+                      _ChoiceOption(value: 'high', label: _t('High', 'Hog')),
+                    ],
+                    onChanged: (value) => setState(() => _energy = value),
+                  ),
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Talk level', 'Pratniva')),
+                  const SizedBox(height: 8),
+                  _ChoiceWrap(
+                    selected: _talkLevel,
+                    options: [
+                      _ChoiceOption(value: 'low', label: _t('Quiet', 'Tyst')),
+                      _ChoiceOption(
+                          value: 'medium', label: _t('Some talk', 'Lite prat')),
+                      _ChoiceOption(
+                          value: 'high', label: _t('Social', 'Social')),
+                    ],
+                    onChanged: (value) => setState(() => _talkLevel = value),
+                  ),
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Duration', 'Langd')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$_duration min',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        Slider(
+                          min: 10,
+                          max: 120,
+                          divisions: 110,
+                          value: _duration.toDouble(),
+                          label: '$_duration min',
+                          onChanged: (value) =>
+                              setState(() => _duration = value.round()),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _SectionTitle(title: _t('Meeting time', 'Motestid')),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: _pickMeetingTime,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white24),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(_formatDateTime(_meetingTime)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Meeting place', 'Mötesplats')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _placeController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText:
+                          _t('Type a public place', 'Skriv en offentlig plats'),
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white24),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF2DD4CF)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _submit,
+                      child: Text(_saving
+                          ? _t('Posting...', 'Publicerar...')
+                          : _t('Post invite', 'Publicera inbjudan')),
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
-            _SectionTitle(title: _t('Meeting time', 'Motestid')),
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: _pickMeetingTime,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(_formatDateTime(_meetingTime)),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _SectionTitle(title: _t('Meeting place', 'Mötesplats')),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _placeController,
-              decoration: InputDecoration(
-                hintText: _t('Type a public place', 'Skriv en offentlig plats'),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _saving ? null : _submit,
-                child: Text(_saving
-                    ? _t('Posting...', 'Publicerar...')
-                    : _t('Post invite', 'Publicera inbjudan')),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

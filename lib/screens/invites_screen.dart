@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
-import 'create_invite_screen.dart';
+import 'request_screen.dart';
+import '../widgets/social_chrome.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
@@ -363,21 +364,22 @@ class _InvitesScreenState extends State<InvitesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(isSv ? 'Inbjudningar' : 'Invites'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () async {
-              final created = await Navigator.push<bool>(
+            onPressed: () {
+              Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CreateInviteScreen(appState: widget.appState),
+                  builder: (_) => RequestScreen(appState: widget.appState),
                 ),
               );
-              if (created == true && mounted) {
-                _reloadInvites();
-              }
             },
           ),
           IconButton(
@@ -386,219 +388,306 @@ class _InvitesScreenState extends State<InvitesScreen> {
           )
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Column(
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: _activity,
-                  decoration: InputDecoration(
-                    labelText: isSv ? 'Aktivitet' : 'Activity',
-                    border: const OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                        value: 'all', child: Text(isSv ? 'Alla' : 'All')),
-                    DropdownMenuItem(
-                        value: 'walk', child: Text(isSv ? 'Promenad' : 'Walk')),
-                    DropdownMenuItem(
-                        value: 'workout',
-                        child: Text(isSv ? 'Träna' : 'Workout')),
-                    const DropdownMenuItem(
-                        value: 'coffee', child: Text('Fika')),
-                    DropdownMenuItem(
-                        value: 'lunch', child: Text(isSv ? 'Luncha' : 'Lunch')),
-                    DropdownMenuItem(
-                        value: 'dinner',
-                        child: Text(isSv ? 'Middag' : 'Dinner')),
-                  ],
-                  onChanged: (v) {
-                    setState(() {
-                      _activity = v ?? 'all';
-                    });
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_joining) const LinearProgressIndicator(),
-            if (_deleting) const LinearProgressIndicator(),
-            const SizedBox(height: 12),
-            Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _invitesFuture,
-                builder: (context, snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snap.hasError) {
-                    return Center(child: Text('Error: ${snap.error}'));
-                  }
-
-                  final allItems = snap.data ?? [];
-                  final items = allItems.where(_matchesFilters).toList();
-
-                  if (items.isEmpty) {
-                    return Center(
-                      child: Text(isSv
-                          ? 'Inga öppna inbjudningar för filtret'
-                          : 'No open invites for this filter'),
-                    );
-                  }
-
-                  return ListView.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, i) {
-                      final it = items[i];
-                      final place = (it['place'] ?? '').toString();
-                      final meetingTimeLabel =
-                          _formatDateTime(it['meeting_time']);
-                      final timeProgress = _timeLeftProgress(
-                          it['created_at'], it['meeting_time']);
-                      final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
-                      final status = _inviteStatus(it);
-                      final canDelete = it['host_user_id']?.toString() ==
-                          Supabase.instance.client.auth.currentUser?.id;
-
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.black12),
+      body: SocialBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SocialPanel(
+              child: Column(
+                children: [
+                  Column(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          isSv ? 'Aktivitet' : 'Activity',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _activityLabel(it['activity']),
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: _activity,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.08),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: Color(0xFF2DD4CF)),
+                          ),
+                        ),
+                        dropdownColor: const Color(0xFF10201E),
+                        style: const TextStyle(color: Colors.white),
+                        items: [
+                          DropdownMenuItem(
+                            value: 'all',
+                            child: Text(
+                              isSv ? 'Alla' : 'All',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'walk',
+                            child: Text(
+                              isSv ? 'Promenad' : 'Walk',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'workout',
+                            child: Text(
+                              isSv ? 'Träna' : 'Workout',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'coffee',
+                            child: Text(
+                              'Fika',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'lunch',
+                            child: Text(
+                              isSv ? 'Luncha' : 'Lunch',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'dinner',
+                            child: Text(
+                              isSv ? 'Middag' : 'Dinner',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _activity = v ?? 'all';
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_joining) const LinearProgressIndicator(),
+                  if (_deleting) const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _invitesFuture,
+                      builder: (context, snap) {
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (snap.hasError) {
+                          return Center(child: Text('Error: ${snap.error}'));
+                        }
+
+                        final allItems = snap.data ?? [];
+                        final items = allItems.where(_matchesFilters).toList();
+
+                        if (items.isEmpty) {
+                          return Center(
+                            child: Text(isSv
+                                ? 'Inga öppna inbjudningar för filtret'
+                                : 'No open invites for this filter'),
+                          );
+                        }
+
+                        return ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, i) {
+                            final it = items[i];
+                            final place = (it['place'] ?? '').toString();
+                            final meetingTimeLabel =
+                                _formatDateTime(it['meeting_time']);
+                            final timeProgress = _timeLeftProgress(
+                                it['created_at'], it['meeting_time']);
+                            final timeLeftLabel =
+                                _timeLeftLabel(it['meeting_time']);
+                            final status = _inviteStatus(it);
+                            final canDelete = it['host_user_id']?.toString() ==
+                                Supabase.instance.client.auth.currentUser?.id;
+
+                            return Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _activityLabel(it['activity']),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 16,
+                                              color: Colors.white),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white24,
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          isSv
+                                              ? '${it['accepted_count'] ?? 0} tackat ja'
+                                              : '${it['accepted_count'] ?? 0} joined',
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _statusColor(status),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _statusLabel(status),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: status == 'full'
+                                                ? Colors.white
+                                                : Colors.black,
+                                          ),
+                                        ),
+                                      ),
+                                      if (canDelete) ...[
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          constraints:
+                                              const BoxConstraints.tightFor(
+                                                  width: 28, height: 28),
+                                          onPressed: _deleting
+                                              ? null
+                                              : () => _deleteInvite(it),
+                                          icon: const Icon(Icons.delete_outline,
+                                              size: 18),
+                                          tooltip: _t('Remove invite',
+                                              'Ta bort inbjudan'),
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black12,
-                                    borderRadius: BorderRadius.circular(999),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _countLabel(it),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${it['duration']} min',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  child: Text(
+                                  const SizedBox(height: 6),
+                                  Text(
                                     isSv
-                                        ? '${it['accepted_count'] ?? 0} tackat ja'
-                                        : '${it['accepted_count'] ?? 0} joined',
+                                        ? 'Tid: $meetingTimeLabel'
+                                        : 'Time: $meetingTimeLabel',
                                     style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _statusColor(status),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    _statusLabel(status),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: status == 'full'
-                                          ? Colors.white
-                                          : Colors.black87,
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                ),
-                                if (canDelete) ...[
-                                  const SizedBox(width: 8),
-                                  IconButton(
-                                    visualDensity: VisualDensity.compact,
-                                    constraints: const BoxConstraints.tightFor(
-                                        width: 28, height: 28),
-                                    onPressed: _deleting
-                                        ? null
-                                        : () => _deleteInvite(it),
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 18),
-                                    tooltip:
-                                        _t('Remove invite', 'Ta bort inbjudan'),
+                                  const SizedBox(height: 8),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: LinearProgressIndicator(
+                                      value: timeProgress,
+                                      minHeight: 7,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    timeLeftLabel,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (place.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      isSv
+                                          ? 'Mötesplats: $place'
+                                          : 'Meeting place: $place',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 44,
+                                    child: FilledButton(
+                                      onPressed:
+                                          _joining || !_canJoinStatus(status)
+                                              ? null
+                                              : () => _joinInvite(it),
+                                      child: Text(_joinButtonLabel(status)),
+                                    ),
                                   ),
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _countLabel(it),
-                                    style:
-                                        const TextStyle(color: Colors.black54),
-                                  ),
-                                ),
-                                Text(
-                                  '${it['duration']} min',
-                                  style: const TextStyle(color: Colors.black54),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              isSv
-                                  ? 'Tid: $meetingTimeLabel'
-                                  : 'Time: $meetingTimeLabel',
-                            ),
-                            const SizedBox(height: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(999),
-                              child: LinearProgressIndicator(
-                                value: timeProgress,
-                                minHeight: 7,
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              timeLeftLabel,
-                              style: const TextStyle(
-                                  color: Colors.black54, fontSize: 12),
-                            ),
-                            if (place.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                isSv
-                                    ? 'Mötesplats: $place'
-                                    : 'Meeting place: $place',
-                              ),
-                            ],
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 44,
-                              child: FilledButton(
-                                onPressed: _joining || !_canJoinStatus(status)
-                                    ? null
-                                    : () => _joinInvite(it),
-                                child: Text(_joinButtonLabel(status)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import 'match_screen.dart';
+import '../widgets/social_chrome.dart';
 
 class RequestScreen extends StatefulWidget {
   final AppState appState;
@@ -18,7 +19,8 @@ class _RequestScreenState extends State<RequestScreen> {
   double _durationMin = 20;
   bool _loading = false;
 
-  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) =>
+      widget.appState.locale.languageCode == 'sv' ? sv : en;
 
   Future<void> _submit() async {
     final isSv = widget.appState.locale.languageCode == 'sv';
@@ -65,7 +67,8 @@ class _RequestScreenState extends State<RequestScreen> {
       );
     } catch (_) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isSv ? 'Något gick fel' : 'Something went wrong')),
+        SnackBar(
+            content: Text(isSv ? 'Något gick fel' : 'Something went wrong')),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -77,110 +80,140 @@ class _RequestScreenState extends State<RequestScreen> {
     final isSv = widget.appState.locale.languageCode == 'sv';
 
     return Scaffold(
-      appBar: AppBar(title: Text(isSv ? 'Välj aktivitet' : 'Choose activity')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _t('What do you want to do?', 'Vad vill du göra?'),
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 16),
-
-            _Segment(title: _t('Activity', 'Aktivitet')),
-            const SizedBox(height: 8),
-            _ChoiceRow(
-              options: [
-                _ChoiceOption(value: 'walk', label: _t('Walk', 'Promenad')),
-                _ChoiceOption(value: 'workout', label: _t('Workout', 'Träna')),
-                _ChoiceOption(value: 'coffee', label: _t('Fika', 'Fika')),
-                _ChoiceOption(value: 'lunch', label: _t('Lunch', 'Luncha')),
-                _ChoiceOption(value: 'dinner', label: _t('Dinner', 'Middag')),
-              ],
-              selected: _activity,
-              onChanged: (v) => setState(() => _activity = v),
-            ),
-
-            const SizedBox(height: 18),
-
-            _Segment(title: _t('Max participants', 'Max antal')),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black12),
-                borderRadius: BorderRadius.circular(12),
-              ),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(isSv ? 'Välj aktivitet' : 'Choose activity'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
+      ),
+      body: SocialBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: SocialPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _participantCount.toString(),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    _t('What do you want to do?', 'Vad vill du göra?'),
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w700),
                   ),
-                  Slider(
-                    min: 1,
-                    max: 10,
-                    divisions: 9,
-                    value: _participantCount.toDouble(),
-                    label: _participantCount.toString(),
-                    onChanged: (v) => setState(() => _participantCount = v.round()),
+                  const SizedBox(height: 16),
+                  _Segment(title: _t('Activity', 'Aktivitet')),
+                  const SizedBox(height: 8),
+                  _ChoiceRow(
+                    options: [
+                      _ChoiceOption(
+                          value: 'walk', label: _t('Walk', 'Promenad')),
+                      _ChoiceOption(
+                          value: 'workout', label: _t('Workout', 'Träna')),
+                      _ChoiceOption(value: 'coffee', label: _t('Fika', 'Fika')),
+                      _ChoiceOption(
+                          value: 'lunch', label: _t('Lunch', 'Luncha')),
+                      _ChoiceOption(
+                          value: 'dinner', label: _t('Dinner', 'Middag')),
+                    ],
+                    selected: _activity,
+                    onChanged: (v) => setState(() => _activity = v),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            _Segment(title: _t('Duration', 'Längd')),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  const SizedBox(height: 18),
+                  _Segment(title: _t('Max participants', 'Max antal')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Text(
+                            _participantCount.toString(),
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: Slider(
+                            min: 1,
+                            max: 10,
+                            divisions: 9,
+                            value: _participantCount.toDouble(),
+                            label: _participantCount.toString(),
+                            onChanged: (v) =>
+                                setState(() => _participantCount = v.round()),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _Segment(title: _t('Duration', 'Längd')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Text(
+                            '${_durationMin.round()} min',
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: Slider(
+                            min: 10,
+                            max: 120,
+                            divisions: 110,
+                            value: _durationMin,
+                            label: '${_durationMin.round()} min',
+                            onChanged: (v) => setState(() => _durationMin = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: _loading ? null : _submit,
+                      child: Text(_loading
+                          ? _t('Saving…', 'Sparar…')
+                          : _t('Continue', 'Fortsätt')),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    '${_durationMin.round()} min',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  Slider(
-                    min: 10,
-                    max: 120,
-                    divisions: 110,
-                    value: _durationMin,
-                    label: '${_durationMin.round()} min',
-                    onChanged: (v) => setState(() => _durationMin = v),
+                    _t(
+                      'We’ll only suggest public places for first meetups.',
+                      'Vi föreslår bara offentliga platser för första träffar.',
+                    ),
+                    style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 22),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                onPressed: _loading ? null : _submit,
-                child: Text(_loading ? _t('Saving…', 'Sparar…') : _t('Continue', 'Fortsätt')),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-            Text(
-              _t(
-                'We’ll only suggest public places for first meetups.',
-                'Vi föreslår bara offentliga platser för första träffar.',
-              ),
-              style: const TextStyle(color: Colors.black54),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -193,7 +226,8 @@ class _Segment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600));
+    return Text(title,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600));
   }
 }
 

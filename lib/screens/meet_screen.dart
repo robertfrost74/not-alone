@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import '../widgets/social_chrome.dart';
 
 class MeetScreen extends StatefulWidget {
   final AppState appState;
@@ -331,7 +332,7 @@ class _MeetScreenState extends State<MeetScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.black12),
+          border: Border.all(color: Colors.white24),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -342,7 +343,7 @@ class _MeetScreenState extends State<MeetScreen> {
                 children: [
                   Text(label,
                       style:
-                          const TextStyle(color: Colors.black54, fontSize: 12)),
+                          const TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(value,
                       style: const TextStyle(
@@ -350,7 +351,7 @@ class _MeetScreenState extends State<MeetScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.edit, size: 18, color: Colors.black45),
+            const Icon(Icons.edit, size: 18, color: Colors.white60),
           ],
         ),
       ),
@@ -368,144 +369,157 @@ class _MeetScreenState extends State<MeetScreen> {
         : _placeName;
 
     return Scaffold(
-      appBar: AppBar(title: Text(isSv ? 'Möte' : 'Meet')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              isSv ? 'Meet mode' : 'Meet mode',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 14),
-
-            // Meeting info (time + place)
-            _infoRow(
-              isSv ? 'Tid' : 'Time',
-              meetingTimeText,
-              _pickMeetingTime,
-            ),
-            const SizedBox(height: 10),
-            _infoRow(
-              isSv ? 'Mötesplats' : 'Meeting place',
-              placeText,
-              _editPlaceName,
-            ),
-
-            const SizedBox(height: 18),
-            if (!_started) ...[
-              if (widget.initialCreatedAt != null && _meetingTime != null) ...[
-                Text(
-                  isSv ? 'Nedräkning till mötet' : 'Countdown to meetup',
-                  style: const TextStyle(color: Colors.black54),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _hmmss(_meetingCountdownSeconds),
-                  style: const TextStyle(
-                      fontSize: 44, fontWeight: FontWeight.w800),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: _meetingProgress,
-                    minHeight: 8,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${(_meetingProgress * 100).round()}%',
-                  style: const TextStyle(color: Colors.black54),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-              ],
-              Text(
-                isSv
-                    ? 'När ni ses: tryck “Jag är här” för att starta timern.'
-                    : 'When you meet: tap “I’m here” to start the timer.',
-                style: const TextStyle(color: Colors.black54),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 56,
-                child: FilledButton(
-                  onPressed: !_hasPlace
-                      ? null
-                      : () async {
-                          await _startMeetMode();
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            SnackBar(
-                                content: Text(isSv
-                                    ? 'Markerad: Jag är här ✅'
-                                    : 'Marked: I’m here ✅')),
-                          );
-                        },
-                  child: Text(isSv ? 'Jag är här' : 'I’m here'),
-                ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                onPressed: !_hasPlace ? null : () async => _startMeetMode(),
-                child: Text(isSv ? 'Starta nu' : 'Start now'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () async {
-                  _timer?.cancel();
-                  await _persistCannotCome();
-                  await _persistFinish();
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    SnackBar(
-                        content: Text(isSv
-                            ? 'Meddelande skickat: Kan inte komma'
-                            : 'Message sent: Cannot come')),
-                  );
-                  Navigator.pop(this.context);
-                },
-                child: Text(isSv ? 'Kan inte komma' : 'Cannot come'),
-              ),
-            ] else ...[
-              // Timer UI
-              const SizedBox(height: 8),
-              Text(
-                _mmss(_remainingSeconds),
-                style:
-                    const TextStyle(fontSize: 64, fontWeight: FontWeight.w800),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                isSv ? 'Låg press. Små steg.' : 'Low pressure. Small steps.',
-                style: const TextStyle(color: Colors.black54),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Row(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(isSv ? 'Möte' : 'Meet'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: Colors.white,
+      ),
+      body: SocialBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SocialPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
+                  Text(
+                    isSv ? 'Meet mode' : 'Meet mode',
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 14),
+                  _infoRow(
+                    isSv ? 'Tid' : 'Time',
+                    meetingTimeText,
+                    _pickMeetingTime,
+                  ),
+                  const SizedBox(height: 10),
+                  _infoRow(
+                    isSv ? 'Mötesplats' : 'Meeting place',
+                    placeText,
+                    _editPlaceName,
+                  ),
+                  const SizedBox(height: 18),
+                  if (!_started) ...[
+                    if (widget.initialCreatedAt != null &&
+                        _meetingTime != null) ...[
+                      Text(
+                        isSv ? 'Nedräkning till mötet' : 'Countdown to meetup',
+                        style: const TextStyle(color: Colors.white70),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _hmmss(_meetingCountdownSeconds),
+                        style: const TextStyle(
+                            fontSize: 44, fontWeight: FontWeight.w800),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: _meetingProgress,
+                          minHeight: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${(_meetingProgress * 100).round()}%',
+                        style: const TextStyle(color: Colors.white70),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    Text(
+                      isSv
+                          ? 'När ni ses: tryck “Jag är här” för att starta timern.'
+                          : 'When you meet: tap “I’m here” to start the timer.',
+                      style: const TextStyle(color: Colors.white70),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: !_hasPlace
+                            ? null
+                            : () async {
+                                await _startMeetMode();
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(isSv
+                                          ? 'Markerad: Jag är här ✅'
+                                          : 'Marked: I’m here ✅')),
+                                );
+                              },
+                        child: Text(isSv ? 'Jag är här' : 'I’m here'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed:
+                          !_hasPlace ? null : () async => _startMeetMode(),
+                      child: Text(isSv ? 'Starta nu' : 'Start now'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
                       onPressed: () async {
                         _timer?.cancel();
+                        await _persistCannotCome();
                         await _persistFinish();
                         if (!mounted) return;
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                              content: Text(isSv
+                                  ? 'Meddelande skickat: Kan inte komma'
+                                  : 'Message sent: Cannot come')),
+                        );
                         Navigator.pop(this.context);
                       },
-                      child: Text(isSv ? 'Avsluta' : 'Finish'),
+                      child: Text(isSv ? 'Kan inte komma' : 'Cannot come'),
                     ),
-                  ),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _mmss(_remainingSeconds),
+                      style: const TextStyle(
+                          fontSize: 64, fontWeight: FontWeight.w800),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      isSv
+                          ? 'Låg press. Små steg.'
+                          : 'Low pressure. Small steps.',
+                      style: const TextStyle(color: Colors.white70),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              _timer?.cancel();
+                              await _persistFinish();
+                              if (!mounted) return;
+                              Navigator.pop(this.context);
+                            },
+                            child: Text(isSv ? 'Avsluta' : 'Finish'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );
