@@ -344,7 +344,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       letterSpacing: -0.6,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 1),
                   Text(
                     _t('Connect. Share. Belong.', 'Connect. Share. Belong.'),
                     style: const TextStyle(
@@ -353,7 +353,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 36),
                   Container(
                     width: double.infinity,
                     constraints: const BoxConstraints(maxWidth: 560),
