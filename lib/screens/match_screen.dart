@@ -307,7 +307,7 @@ class _MatchScreenState extends State<MatchScreen> {
       body: SocialBackground(
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
             child: SocialPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

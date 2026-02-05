@@ -17,6 +17,7 @@ class _RequestScreenState extends State<RequestScreen> {
   String _activity = 'walk';
   int _participantCount = 1;
   double _durationMin = 20;
+  double _radiusKm = 3;
   bool _loading = false;
 
   String _t(String en, String sv) =>
@@ -42,7 +43,7 @@ class _RequestScreenState extends State<RequestScreen> {
         'activity': _activity,
         'mode': mode,
         'duration_min': _durationMin.round(),
-        'radius_m': 1000,
+        'radius_m': (_radiusKm * 1000).round(),
         'energy': 'medium',
       });
 
@@ -90,17 +91,11 @@ class _RequestScreenState extends State<RequestScreen> {
       body: SocialBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
             child: SocialPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _t('What do you want to do?', 'Vad vill du göra?'),
-                    style: const TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 16),
                   _Segment(title: _t('Activity', 'Aktivitet')),
                   const SizedBox(height: 8),
                   _ChoiceRow(
@@ -191,7 +186,43 @@ class _RequestScreenState extends State<RequestScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 18),
+                  _Segment(title: _t('Radius', 'Radie')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Text(
+                            '${_radiusKm.round()} km',
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: Slider(
+                            min: 1,
+                            max: 10,
+                            divisions: 9,
+                            value: _radiusKm,
+                            label: '${_radiusKm.round()} km',
+                            onChanged: (v) => setState(() => _radiusKm = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -201,14 +232,6 @@ class _RequestScreenState extends State<RequestScreen> {
                           ? _t('Saving…', 'Sparar…')
                           : _t('Continue', 'Fortsätt')),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _t(
-                      'We’ll only suggest public places for first meetups.',
-                      'Vi föreslår bara offentliga platser för första träffar.',
-                    ),
-                    style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),

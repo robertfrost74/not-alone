@@ -391,7 +391,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       body: SocialBackground(
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: SocialPanel(
               child: Column(
                 children: [

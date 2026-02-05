@@ -151,7 +151,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
       body: SocialBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: SocialPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

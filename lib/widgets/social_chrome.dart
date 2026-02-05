@@ -114,7 +114,7 @@ class SocialPanel extends StatelessWidget {
   const SocialPanel({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.fromLTRB(12, 20, 12, 12),
   });
 
   @override

@@ -65,7 +65,7 @@ class _HubScreenState extends State<HubScreen> {
         body: SocialBackground(
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(12),
               child: SocialPanel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
