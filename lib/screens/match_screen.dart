@@ -79,6 +79,21 @@ class _MatchScreenState extends State<MatchScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         return AlertDialog(
+          backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: Colors.white24),
+          ),
+          titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+          contentTextStyle: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
           title: Text(isSv ? 'Godkänn inbjudan' : 'Confirm invite'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -86,23 +101,32 @@ class _MatchScreenState extends State<MatchScreen> {
             children: [
               Text(
                   '${isSv ? 'Aktivitet' : 'Activity'}: ${_activityLabel(activity)}'),
+              const SizedBox(height: 6),
               Text(
                   '${isSv ? 'Tidpunkt' : 'Time'}: ${_formatDateTime(meetingTime)}'),
+              const SizedBox(height: 6),
               Text('${isSv ? 'Mötesplats' : 'Meeting place'}: $place'),
+              const SizedBox(height: 6),
               Text(
                   '${isSv ? 'Längd' : 'Duration'}: $duration ${isSv ? 'min' : 'min'}'),
+              const SizedBox(height: 6),
               Text(
                   '${isSv ? 'Antal' : 'Mode'}: ${_modeLabel(widget.selectedMode)}'),
               if (widget.selectedMode == 'group' &&
-                  widget.selectedMaxParticipants != null)
+                  widget.selectedMaxParticipants != null) ...[
+                const SizedBox(height: 6),
                 Text(
                     '${isSv ? 'Max antal' : 'Max participants'}: ${widget.selectedMaxParticipants}'),
+              ],
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(isSv ? 'Avbryt' : 'Cancel'),
+              child: Text(
+                isSv ? 'Avbryt' : 'Cancel',
+                style: const TextStyle(color: Colors.white70),
+              ),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
@@ -120,49 +144,31 @@ class _MatchScreenState extends State<MatchScreen> {
     switch (widget.selectedActivity) {
       case 'walk':
         return _MatchCardData(
-          vibe: _t('Quiet walk', 'Lugn promenad'),
-          distance: _t('650 m away', '650 m bort'),
-          reliability: _t('On time usually', 'Brukar vara i tid'),
           activity: 'walk',
           duration: duration,
         );
       case 'coffee':
         return _MatchCardData(
-          vibe: _t('Fika + light chat', 'Fika + lite prat'),
-          distance: _t('1.2 km away', '1,2 km bort'),
-          reliability: _t('Friendly & calm', 'Vänlig & lugn'),
           activity: 'coffee',
           duration: duration,
         );
       case 'workout':
         return _MatchCardData(
-          vibe: _t('Workout together', 'Träna ihop'),
-          distance: _t('1.1 km away', '1,1 km bort'),
-          reliability: _t('Steady pace', 'Jämnt tempo'),
           activity: 'workout',
           duration: duration,
         );
       case 'lunch':
         return _MatchCardData(
-          vibe: _t('Quick lunch break', 'Snabb lunchpaus'),
-          distance: _t('700 m away', '700 m bort'),
-          reliability: _t('Easygoing', 'Lugn och enkel'),
           activity: 'lunch',
           duration: duration,
         );
       case 'dinner':
         return _MatchCardData(
-          vibe: _t('Calm dinner meetup', 'Lugn middagsträff'),
-          distance: _t('1.8 km away', '1,8 km bort'),
-          reliability: _t('Friendly', 'Vänlig'),
           activity: 'dinner',
           duration: duration,
         );
       default:
         return _MatchCardData(
-          vibe: _t('Quiet meetup', 'Lugn träff'),
-          distance: _t('900 m away', '900 m bort'),
-          reliability: _t('Friendly', 'Vänlig'),
           activity: widget.selectedActivity,
           duration: duration,
         );
@@ -328,9 +334,6 @@ class _MatchScreenState extends State<MatchScreen> {
                       itemBuilder: (context, index) {
                         final m = matches[index];
                         return _MatchCard(
-                          vibe: m.vibe,
-                          distance: m.distance,
-                          reliability: m.reliability,
                           timeLabel: _inviteMeetingTime == null
                               ? _t('Pick meeting time', 'Välj tidpunkt')
                               : _formatDateTime(_inviteMeetingTime!),
@@ -361,25 +364,16 @@ class _MatchScreenState extends State<MatchScreen> {
 }
 
 class _MatchCardData {
-  final String vibe;
-  final String distance;
-  final String reliability;
   final String activity;
   final int duration;
 
   const _MatchCardData({
-    required this.vibe,
-    required this.distance,
-    required this.reliability,
     required this.activity,
     required this.duration,
   });
 }
 
 class _MatchCard extends StatelessWidget {
-  final String vibe;
-  final String distance;
-  final String reliability;
   final String timeLabel;
   final String placeFieldLabel;
   final TextEditingController placeController;
@@ -389,9 +383,6 @@ class _MatchCard extends StatelessWidget {
   final VoidCallback? onInvite;
 
   const _MatchCard({
-    required this.vibe,
-    required this.distance,
-    required this.reliability,
     required this.timeLabel,
     required this.placeFieldLabel,
     required this.placeController,
@@ -413,21 +404,6 @@ class _MatchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(vibe,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                  child: Text(distance,
-                      style: const TextStyle(color: Colors.white70))),
-              Expanded(
-                  child: Text(reliability,
-                      style: const TextStyle(color: Colors.white70))),
-            ],
-          ),
-          const SizedBox(height: 14),
           _InfoEditRow(
             label: 'Time',
             value: timeLabel,
@@ -484,22 +460,37 @@ class _InfoEditRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        constraints: const BoxConstraints(minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.white24),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Text('$label: ', style: const TextStyle(color: Colors.white70)),
             Expanded(
-              child: Text(
-                value,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-            const Icon(Icons.edit, size: 16, color: Colors.white60),
+            const SizedBox(width: 8),
+            const Icon(Icons.edit, size: 18, color: Colors.white60),
           ],
         ),
       ),

@@ -15,7 +15,6 @@ class InvitesScreen extends StatefulWidget {
 
 class _InvitesScreenState extends State<InvitesScreen> {
   bool _joining = false;
-  bool _deleting = false;
   late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
@@ -49,7 +48,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   void _reloadInvites() {
-    setState(() => _invitesFuture = _loadInvites());
+    if (!mounted) return;
+    setState(() {
+      _invitesFuture = _loadInvites();
+    });
   }
 
   void _startRealtime() {
@@ -147,7 +149,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
       return;
     }
 
-    setState(() => _joining = true);
+    if (!mounted) return;
+    setState(() {
+      _joining = true;
+    });
     try {
       final inserted = await Supabase.instance.client
           .from('invite_members')
@@ -180,7 +185,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
         SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
       );
     } finally {
-      if (mounted) setState(() => _joining = false);
+      if (mounted) {
+        setState(() {
+          _joining = false;
+        });
+      }
     }
   }
 
@@ -192,13 +201,31 @@ class _InvitesScreenState extends State<InvitesScreen> {
           context: context,
           builder: (dialogContext) {
             return AlertDialog(
+              backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: Colors.white24),
+              ),
+              titleTextStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              contentTextStyle: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
               title: Text(_t('Remove invite?', 'Ta bort inbjudan?')),
               content:
                   Text(_t('This cannot be undone.', 'Detta kan inte ångras.')),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text(_t('Cancel', 'Avbryt')),
+                  child: Text(
+                    _t('Cancel', 'Avbryt'),
+                    style: const TextStyle(color: Colors.white70),
+                  ),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
@@ -210,9 +237,18 @@ class _InvitesScreenState extends State<InvitesScreen> {
         ) ??
         false;
     if (!isConfirmed) return;
+    if (!mounted) return;
 
-    setState(() => _deleting = true);
     try {
+      // Clean up dependent rows first to avoid FK delete errors.
+      await Supabase.instance.client
+          .from('invite_members')
+          .delete()
+          .match({'invite_id': inviteId});
+      await Supabase.instance.client
+          .from('meetups')
+          .delete()
+          .match({'invite_id': inviteId});
       await Supabase.instance.client
           .from('invites')
           .delete()
@@ -224,8 +260,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _deleting = false);
     }
   }
 
@@ -479,7 +513,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_joining) const LinearProgressIndicator(),
-                  if (_deleting) const LinearProgressIndicator(),
                   const SizedBox(height: 12),
                   Expanded(
                     child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -589,9 +622,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                           constraints:
                                               const BoxConstraints.tightFor(
                                                   width: 28, height: 28),
-                                          onPressed: _deleting
-                                              ? null
-                                              : () => _deleteInvite(it),
+                                          onPressed: () => _deleteInvite(it),
                                           icon: const Icon(Icons.delete_outline,
                                               size: 18),
                                           tooltip: _t('Remove invite',
