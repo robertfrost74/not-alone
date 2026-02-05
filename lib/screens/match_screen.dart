@@ -10,6 +10,9 @@ class MatchScreen extends StatefulWidget {
   final String selectedMode;
   final String selectedEnergy;
   final int? selectedMaxParticipants;
+  final int selectedAgeMin;
+  final int selectedAgeMax;
+  final String selectedTargetGender;
 
   const MatchScreen({
     super.key,
@@ -19,6 +22,9 @@ class MatchScreen extends StatefulWidget {
     required this.selectedMode,
     required this.selectedEnergy,
     required this.selectedMaxParticipants,
+    required this.selectedAgeMin,
+    required this.selectedAgeMax,
+    required this.selectedTargetGender,
   });
 
   @override
@@ -67,6 +73,17 @@ class _MatchScreenState extends State<MatchScreen> {
     return _t('1:1', '1:1');
   }
 
+  String _targetGenderLabel(String value) {
+    switch (value) {
+      case 'male':
+        return _t('Men', 'Män');
+      case 'female':
+        return _t('Women', 'Kvinnor');
+      default:
+        return _t('All', 'Alla');
+    }
+  }
+
   Future<bool> _showInviteConfirmModal({
     required String activity,
     required int duration,
@@ -112,6 +129,12 @@ class _MatchScreenState extends State<MatchScreen> {
               const SizedBox(height: 6),
               Text(
                   '${isSv ? 'Antal' : 'Mode'}: ${_modeLabel(widget.selectedMode)}'),
+              const SizedBox(height: 6),
+              Text(
+                  '${isSv ? 'Ålders spann' : 'Age range'}: ${widget.selectedAgeMin} - ${widget.selectedAgeMax}'),
+              const SizedBox(height: 6),
+              Text(
+                  '${isSv ? 'Visa för' : 'Show for'}: ${_targetGenderLabel(widget.selectedTargetGender)}'),
               if (widget.selectedMode == 'group' &&
                   widget.selectedMaxParticipants != null) ...[
                 const SizedBox(height: 6),
@@ -196,6 +219,9 @@ class _MatchScreenState extends State<MatchScreen> {
           'duration': duration,
           'meeting_time': meetingTime.toIso8601String(),
           'place': place,
+          'age_min': widget.selectedAgeMin,
+          'age_max': widget.selectedAgeMax,
+          'target_gender': widget.selectedTargetGender,
           'status': 'open',
         })
         .select('id')

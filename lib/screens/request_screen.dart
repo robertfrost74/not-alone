@@ -18,6 +18,8 @@ class _RequestScreenState extends State<RequestScreen> {
   int _participantCount = 1;
   double _durationMin = 20;
   double _radiusKm = 3;
+  RangeValues _ageRange = const RangeValues(16, 120);
+  String _targetGender = 'all'; // all | male | female
   bool _loading = false;
 
   String _t(String en, String sv) =>
@@ -59,6 +61,9 @@ class _RequestScreenState extends State<RequestScreen> {
             selectedMode: mode,
             selectedEnergy: 'medium',
             selectedMaxParticipants: mode == 'group' ? _participantCount : null,
+            selectedAgeMin: _ageRange.start.round(),
+            selectedAgeMax: _ageRange.end.round(),
+            selectedTargetGender: _targetGender,
           ),
         ),
       );
@@ -185,6 +190,58 @@ class _RequestScreenState extends State<RequestScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 18),
+                  _Segment(title: _t('Age range', 'Ålders spann')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Text(
+                            '${_ageRange.start.round()} - ${_ageRange.end.round()}',
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: RangeSlider(
+                            min: 16,
+                            max: 120,
+                            divisions: 104,
+                            values: _ageRange,
+                            labels: RangeLabels(
+                              _ageRange.start.round().toString(),
+                              _ageRange.end.round().toString(),
+                            ),
+                            onChanged: (v) => setState(() => _ageRange = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _Segment(title: _t('Show invite for', 'Visa inbjudan för')),
+                  const SizedBox(height: 8),
+                  _ChoiceRow(
+                    options: [
+                      _ChoiceOption(value: 'all', label: _t('All', 'Alla')),
+                      _ChoiceOption(value: 'male', label: _t('Men', 'Män')),
+                      _ChoiceOption(
+                          value: 'female', label: _t('Women', 'Kvinnor')),
+                    ],
+                    selected: _targetGender,
+                    onChanged: (v) => setState(() => _targetGender = v),
                   ),
                   const SizedBox(height: 18),
                   _Segment(title: _t('Radius', 'Radie')),

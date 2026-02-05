@@ -1,9 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image/image.dart' as img;
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
@@ -19,20 +15,16 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const _avatarBucket = 'avatars';
-  static const _maxOriginalBytes = 15 * 1024 * 1024;
-  static const _targetMaxBytes = 600 * 1024;
-
   final _usernameController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _ageController = TextEditingController();
   final _bioController = TextEditingController();
   final _cityController = TextEditingController();
   final _interestsController = TextEditingController();
+  String _gender = 'male'; // male | female
   String _avatarUrl = '';
   String _avatarPresetId = '';
   bool _saving = false;
-  bool _uploadingAvatar = false;
 
   bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
@@ -75,6 +67,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _interestsController.text = _fixMojibake((metadata['interests'] ?? '').toString());
     _avatarUrl = _fixMojibake((metadata['avatar_url'] ?? '').toString());
     _avatarPresetId = (metadata['avatar_preset_id'] ?? '').toString();
+    final rawGender = (metadata['gender'] ?? '').toString().toLowerCase().trim();
+    _gender = rawGender == 'female' ? 'female' : 'male';
   }
 
   Future<void> _showAvatarPicker() async {
@@ -175,128 +169,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Uint8List? _compressAvatar(Uint8List originalBytes) {
-    final decoded = img.decodeImage(originalBytes);
-    if (decoded == null) return null;
-
-    final longestSide = decoded.width > decoded.height ? decoded.width : decoded.height;
-    final resized = longestSide > 1080
-        ? (decoded.width >= decoded.height
-            ? img.copyResize(decoded, width: 1080)
-            : img.copyResize(decoded, height: 1080))
-        : decoded;
-
-    int quality = 84;
-    List<int> jpg = img.encodeJpg(resized, quality: quality);
-    while (jpg.length > _targetMaxBytes && quality > 56) {
-      quality -= 7;
-      jpg = img.encodeJpg(resized, quality: quality);
-    }
-    return Uint8List.fromList(jpg);
-  }
-
   Future<void> _pickAndUploadAvatar() async {
-    if (_uploadingAvatar) return;
-
-    XFile? picked;
-    try {
-      final picker = ImagePicker();
-      picked = await picker.pickImage(source: ImageSource.gallery);
-    } on PlatformException catch (e) {
-      if (!mounted) return;
-      final msg = e.code == 'photo_access_denied'
-          ? _t(
-              'Photo access denied. Allow Photos access in iOS Settings.',
-              'Fotoåtkomst nekad. Tillåt Bilder i iOS-inställningar.',
-            )
-          : '${_t('Could not open photo picker', 'Kunde inte öppna bildväljaren')}: ${e.message ?? e.code}';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      return;
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('${_t('Could not open photo picker', 'Kunde inte öppna bildväljaren')}: $e'),
-        ),
-      );
-      return;
-    }
-
-    if (picked == null) return;
-
-    final originalBytes = await picked.readAsBytes();
-    if (originalBytes.length > _maxOriginalBytes) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Image is too large. Max 15 MB before upload.',
-              'Bilden är för stor. Max 15 MB före uppladdning.',
-            ),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _t(
+            'Upload is temporarily disabled while we fix iOS build settings.',
+            'Uppladdning är tillfälligt avstängd medan vi fixar iOS build-inställningar.',
           ),
         ),
-      );
-      return;
-    }
-
-    final uploadBytes = _compressAvatar(originalBytes);
-    if (uploadBytes == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_t('Invalid image file', 'Ogiltig bildfil'))),
-      );
-      return;
-    }
-
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-
-    setState(() => _uploadingAvatar = true);
-    try {
-      final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final path = '$userId/$fileName';
-
-      await Supabase.instance.client.storage.from(_avatarBucket).uploadBinary(
-            path,
-            uploadBytes,
-            fileOptions: const FileOptions(
-              upsert: true,
-              contentType: 'image/jpeg',
-            ),
-          );
-      final publicUrl =
-          Supabase.instance.client.storage.from(_avatarBucket).getPublicUrl(path);
-
-      if (!mounted) return;
-      setState(() => _avatarPresetId = '');
-      setState(() => _avatarUrl = publicUrl);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Image uploaded. Save profile to keep it.',
-              'Bild uppladdad. Spara profilen för att behålla den.',
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _t(
-              'Upload failed. Ensure Storage bucket "avatars" exists and is public.',
-              'Uppladdning misslyckades. Kontrollera att Storage-bucket "avatars" finns och är publik.',
-            ),
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _uploadingAvatar = false);
-    }
+      ),
+    );
   }
 
   Future<void> _saveProfile() async {
@@ -330,6 +214,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'username': username,
             'full_name': _fixMojibake(_fullNameController.text.trim()),
             'age': age,
+            'gender': _gender,
             'bio': _fixMojibake(_bioController.text.trim()),
             'city': _fixMojibake(_cityController.text.trim()),
             'interests': _fixMojibake(_interestsController.text.trim()),
@@ -410,19 +295,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           right: 0,
                           bottom: 0,
                           child: FilledButton(
-                            onPressed: _uploadingAvatar ? null : _showAvatarPicker,
+                            onPressed: _showAvatarPicker,
                             style: FilledButton.styleFrom(
                               minimumSize: const Size(42, 42),
                               padding: EdgeInsets.zero,
                               shape: const CircleBorder(),
                             ),
-                            child: _uploadingAvatar
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.photo_camera_outlined, size: 18),
+                            child:
+                                const Icon(Icons.photo_camera_outlined, size: 18),
                           ),
                         ),
                       ],
@@ -432,8 +312,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Center(
                     child: Text(
                       _t(
-                        'Choose avatar or upload (max 15 MB, auto compressed)',
-                        'Välj avatar eller ladda upp (max 15 MB, komprimeras automatiskt)',
+                        'Choose avatar (upload is temporarily disabled)',
+                        'Välj avatar (uppladdning är tillfälligt avstängd)',
                       ),
                       style: const TextStyle(color: Colors.white60, fontSize: 13),
                     ),
@@ -476,6 +356,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     keyboardType: TextInputType.number,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(hintText: _t('e.g. 28', 't.ex. 28')),
+                  ),
+                  const SizedBox(height: 14),
+                  _fieldLabel(_t('Gender', 'Kön')),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      ChoiceChip(
+                        label: Text(_t('Man', 'Man')),
+                        selected: _gender == 'male',
+                        onSelected: (_) => setState(() => _gender = 'male'),
+                      ),
+                      ChoiceChip(
+                        label: Text(_t('Woman', 'Kvinna')),
+                        selected: _gender == 'female',
+                        onSelected: (_) => setState(() => _gender = 'female'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   _fieldLabel(_t('Bio', 'Om mig')),

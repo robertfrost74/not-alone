@@ -25,6 +25,32 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
 
+  int? get _currentUserAge {
+    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    if (metadata == null) return null;
+    final raw = metadata['age'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  String _normalizeGender(String value) {
+    final v = value.trim().toLowerCase();
+    if (v == 'man' || v == 'män' || v == 'male') return 'male';
+    if (v == 'kvinna' || v == 'kvinnor' || v == 'female') return 'female';
+    if (v == 'alla' || v == 'all') return 'all';
+    return v;
+  }
+
+  String? get _currentUserGender {
+    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    if (metadata == null) return null;
+    final raw = metadata['gender']?.toString() ?? '';
+    final normalized = _normalizeGender(raw);
+    if (normalized != 'male' && normalized != 'female') return null;
+    return normalized;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -83,7 +109,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final res = await Supabase.instance.client
         .from('invites')
         .select(
-            'id, host_user_id, max_participants, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status,user_id)')
+            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status,user_id)')
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(50);
@@ -234,6 +260,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
           _normalizeActivity((invite['activity'] ?? '').toString());
       if (activity != _normalizeActivity(_activity)) return false;
     }
+
+    final age = _currentUserAge;
+    if (age != null) {
+      final minRaw = invite['age_min'];
+      final maxRaw = invite['age_max'];
+      final ageMin =
+          minRaw is num ? minRaw.toInt() : int.tryParse(minRaw?.toString() ?? '');
+      final ageMax =
+          maxRaw is num ? maxRaw.toInt() : int.tryParse(maxRaw?.toString() ?? '');
+      if (ageMin != null && age < ageMin) return false;
+      if (ageMax != null && age > ageMax) return false;
+    }
+
+    final targetGender =
+        _normalizeGender((invite['target_gender'] ?? 'all').toString());
+    if (targetGender == 'male' || targetGender == 'female') {
+      final viewerGender = _currentUserGender;
+      if (viewerGender == null) return false;
+      if (viewerGender != targetGender) return false;
+    }
+
     return true;
   }
 
@@ -287,6 +334,292 @@ class _InvitesScreenState extends State<InvitesScreen> {
           _joining = false;
         });
       }
+    }
+  }
+
+  Future<void> _editInvite(Map<String, dynamic> invite) async {
+    final inviteId = invite['id']?.toString();
+    final hostId = invite['host_user_id']?.toString();
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (inviteId == null || inviteId.isEmpty || userId == null || hostId != userId) {
+      return;
+    }
+
+    String activity = _normalizeActivity((invite['activity'] ?? 'walk').toString());
+    int duration = (invite['duration'] as num?)?.toInt() ??
+        int.tryParse(invite['duration']?.toString() ?? '') ??
+        20;
+    int maxParticipants = (invite['max_participants'] as num?)?.toInt() ??
+        int.tryParse(invite['max_participants']?.toString() ?? '') ??
+        2;
+    final mode = _normalizeMode((invite['mode'] ?? '').toString());
+    final placeController = TextEditingController(text: (invite['place'] ?? '').toString());
+    DateTime meetingTime =
+        _parseDateTime(invite['meeting_time']) ?? DateTime.now().add(const Duration(minutes: 10));
+    RangeValues ageRange = RangeValues(
+      ((invite['age_min'] as num?)?.toDouble() ??
+              double.tryParse(invite['age_min']?.toString() ?? '') ??
+              16)
+          .clamp(16, 120),
+      ((invite['age_max'] as num?)?.toDouble() ??
+              double.tryParse(invite['age_max']?.toString() ?? '') ??
+              120)
+          .clamp(16, 120),
+    );
+    if (ageRange.start > ageRange.end) {
+      ageRange = RangeValues(ageRange.end, ageRange.start);
+    }
+    String targetGender =
+        _normalizeGender((invite['target_gender'] ?? 'all').toString());
+    if (targetGender != 'male' && targetGender != 'female') targetGender = 'all';
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F1A1A),
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Future<void> pickMeetingTime() async {
+              final date = await showDatePicker(
+                context: sheetContext,
+                initialDate: meetingTime,
+                firstDate: DateTime.now(),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+                helpText: isSv ? 'Välj datum' : 'Pick date',
+              );
+              if (date == null) return;
+              final time = await showTimePicker(
+                context: sheetContext,
+                initialTime: TimeOfDay.fromDateTime(meetingTime),
+                helpText: isSv ? 'Välj tid' : 'Pick time',
+              );
+              if (time == null) return;
+              setSheetState(() {
+                meetingTime = DateTime(
+                    date.year, date.month, date.day, time.hour, time.minute);
+              });
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _t('Edit invite', 'Redigera inbjudan'),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _t('Activity', 'Aktivitet'),
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        initialValue: activity,
+                        dropdownColor: const Color(0xFF10201E),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                              value: 'walk',
+                              child: Text(isSv ? 'Promenad' : 'Walk')),
+                          const DropdownMenuItem(
+                              value: 'coffee', child: Text('Fika')),
+                          DropdownMenuItem(
+                              value: 'workout',
+                              child: Text(isSv ? 'Träna' : 'Workout')),
+                          DropdownMenuItem(
+                              value: 'lunch',
+                              child: Text(isSv ? 'Luncha' : 'Lunch')),
+                          DropdownMenuItem(
+                              value: 'dinner',
+                              child: Text(isSv ? 'Middag' : 'Dinner')),
+                        ],
+                        onChanged: (v) =>
+                            setSheetState(() => activity = v ?? activity),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _t('Meeting place', 'Mötesplats'),
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: placeController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: _t('Enter place', 'Ange plats'),
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '${_t('Time', 'Tid')}: ${_formatDateTime(meetingTime.toIso8601String())}',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: pickMeetingTime,
+                          child: Text(_t('Change time', 'Ändra tid')),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '${_t('Duration', 'Längd')}: $duration min',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      Slider(
+                        min: 10,
+                        max: 120,
+                        divisions: 110,
+                        value: duration.toDouble().clamp(10, 120),
+                        label: '$duration',
+                        onChanged: (v) =>
+                            setSheetState(() => duration = v.round()),
+                      ),
+                      if (mode != 'one_to_one') ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_t('Max participants', 'Max antal')}: $maxParticipants',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        Slider(
+                          min: 2,
+                          max: 10,
+                          divisions: 8,
+                          value: maxParticipants.toDouble().clamp(2, 10),
+                          label: '$maxParticipants',
+                          onChanged: (v) =>
+                              setSheetState(() => maxParticipants = v.round()),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_t('Age range', 'Ålders spann')}: ${ageRange.start.round()}-${ageRange.end.round()}',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      RangeSlider(
+                        min: 16,
+                        max: 120,
+                        divisions: 104,
+                        values: ageRange,
+                        labels: RangeLabels(
+                          '${ageRange.start.round()}',
+                          '${ageRange.end.round()}',
+                        ),
+                        onChanged: (v) => setSheetState(() => ageRange = v),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _t('Show invite for', 'Visa inbjudan för'),
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          ChoiceChip(
+                            label: Text(_t('All', 'Alla')),
+                            selected: targetGender == 'all',
+                            onSelected: (_) =>
+                                setSheetState(() => targetGender = 'all'),
+                          ),
+                          ChoiceChip(
+                            label: Text(_t('Men', 'Män')),
+                            selected: targetGender == 'male',
+                            onSelected: (_) =>
+                                setSheetState(() => targetGender = 'male'),
+                          ),
+                          ChoiceChip(
+                            label: Text(_t('Women', 'Kvinnor')),
+                            selected: targetGender == 'female',
+                            onSelected: (_) =>
+                                setSheetState(() => targetGender = 'female'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(sheetContext, true),
+                          child: Text(_t('Save changes', 'Spara ändringar')),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    final updatedPlace = placeController.text.trim();
+    placeController.dispose();
+    if (saved != true) return;
+
+    try {
+      await Supabase.instance.client.from('invites').update({
+        'activity': activity,
+        'place': updatedPlace,
+        'duration': duration,
+        'meeting_time': meetingTime.toIso8601String(),
+        'max_participants': mode == 'one_to_one' ? null : maxParticipants,
+        'age_min': ageRange.start.round(),
+        'age_max': ageRange.end.round(),
+        'target_gender': targetGender,
+      }).match({
+        'id': inviteId,
+        'host_user_id': userId,
+      });
+
+      if (!mounted) return;
+      _reloadInvites();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Invite updated', 'Inbjudan uppdaterad'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+      );
     }
   }
 
@@ -778,17 +1111,29 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         ),
                                       ),
                                       if (canDelete) ...[
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          visualDensity: VisualDensity.standard,
-                                          constraints:
-                                              const BoxConstraints.tightFor(
-                                                  width: 36, height: 36),
-                                          onPressed: () => _deleteInvite(it),
-                                          icon: const Icon(Icons.delete_outline,
-                                              size: 22),
-                                          tooltip: _t('Remove invite',
-                                              'Ta bort inbjudan'),
+                                        const SizedBox(width: 10),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            GestureDetector(
+                                              onTap: () => _editInvite(it),
+                                              child: const SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child: Icon(Icons.edit_outlined,
+                                                    size: 22),
+                                              ),
+                                            ),
+                                            GestureDetector(
+                                              onTap: () => _deleteInvite(it),
+                                              child: const SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child: Icon(Icons.delete_outline,
+                                                    size: 22),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ],
