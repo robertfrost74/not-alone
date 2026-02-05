@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import 'invites_screen.dart';
+import 'profile_screen.dart';
 import 'request_screen.dart';
 import 'welcome_screen.dart';
 import '../widgets/social_chrome.dart';
@@ -40,6 +41,22 @@ class _HubScreenState extends State<HubScreen> {
     }
   }
 
+  Future<void> _onMenuSelected(String value) async {
+    if (value == 'profile') {
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(appState: widget.appState),
+        ),
+      );
+      return;
+    }
+    if (value == 'logout') {
+      await _signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -53,12 +70,21 @@ class _HubScreenState extends State<HubScreen> {
           foregroundColor: Colors.white,
           title: Text(_t('Choose next step', 'Välj nästa steg')),
           actions: [
-            TextButton(
-              onPressed: _loading ? null : _signOut,
-              child: Text(
-                _t('Sign out', 'Logga ut'),
-                style: const TextStyle(color: Colors.white),
-              ),
+            PopupMenuButton<String>(
+              enabled: !_loading,
+              icon: const Icon(Icons.menu),
+              color: const Color(0xFF10201E),
+              onSelected: _onMenuSelected,
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: 'profile',
+                  child: Text(_t('Profile', 'Profil')),
+                ),
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Text(_t('Sign out', 'Logga ut')),
+                ),
+              ],
             ),
           ],
         ),
