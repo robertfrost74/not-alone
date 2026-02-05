@@ -91,6 +91,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
     var invites = (res as List).cast<Map<String, dynamic>>();
     if (invites.isEmpty) return invites;
 
+    Map<String, String> hostNamesById = {};
+    try {
+      final profilesRes = await Supabase.instance.client
+          .from('profiles')
+          .select('id, username, full_name')
+          .limit(2000);
+      final profileRows = (profilesRes as List).cast<Map<String, dynamic>>();
+      for (final row in profileRows) {
+        final id = row['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        final username = (row['username'] ?? '').toString().trim();
+        final fullName = (row['full_name'] ?? '').toString().trim();
+        final display = username.isNotEmpty
+            ? username
+            : (fullName.isNotEmpty ? fullName : '');
+        if (display.isNotEmpty) hostNamesById[id] = display;
+      }
+    } catch (_) {
+      // Keep invites page resilient if profiles table/policies differ.
+    }
+
     for (final invite in invites) {
       final members =
           (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
@@ -98,6 +119,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
       invite['accepted_count'] = members
           .where((member) => member['status']?.toString() != 'cannot_attend')
           .length;
+      final hostId = invite['host_user_id']?.toString() ?? '';
+      final fallback = hostId.isEmpty
+          ? _t('Unknown user', 'Okänd användare')
+          : hostId.substring(0, hostId.length < 8 ? hostId.length : 8);
+      invite['host_display_name'] = hostNamesById[hostId] ?? fallback;
     }
     return invites;
   }
@@ -678,12 +704,29 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                         CrossAxisAlignment.center,
                                     children: [
                                       Expanded(
-                                        child: Text(
-                                          _activityLabel(it['activity']),
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 18,
-                                              color: Colors.white),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _activityLabel(it['activity']),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 18,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              (it['host_display_name'] ?? '')
+                                                  .toString(),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       TextButton(
