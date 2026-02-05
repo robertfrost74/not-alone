@@ -318,13 +318,6 @@ class _MatchScreenState extends State<MatchScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _t('People nearby with the same vibe',
-                        'Personer nära med samma vibe'),
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
                   if (_loading) const LinearProgressIndicator(),
                   const SizedBox(height: 8),
                   Expanded(

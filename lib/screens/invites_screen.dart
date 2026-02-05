@@ -566,7 +566,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                 children: [
                                   Row(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        CrossAxisAlignment.center,
                                     children: [
                                       Expanded(
                                         child: Text(
@@ -618,13 +618,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                       if (canDelete) ...[
                                         const SizedBox(width: 8),
                                         IconButton(
-                                          visualDensity: VisualDensity.compact,
+                                          visualDensity: VisualDensity.standard,
                                           constraints:
                                               const BoxConstraints.tightFor(
-                                                  width: 28, height: 28),
+                                                  width: 36, height: 36),
                                           onPressed: () => _deleteInvite(it),
                                           icon: const Icon(Icons.delete_outline,
-                                              size: 18),
+                                              size: 22),
                                           tooltip: _t('Remove invite',
                                               'Ta bort inbjudan'),
                                         ),
