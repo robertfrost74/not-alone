@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'state/app_state.dart';
@@ -45,6 +44,9 @@ class _NotAloneAppState extends State<NotAloneApp> {
       animation: _appState,
       builder: (context, _) {
         final user = Supabase.instance.client.auth.currentUser;
+        const sfPro = '.SF Pro Text';
+        final sfTextTheme =
+            ThemeData(useMaterial3: true).textTheme.apply(fontFamily: sfPro);
 
         return MaterialApp(
           debugShowCheckedModeBanner: false,
@@ -55,8 +57,9 @@ class _NotAloneAppState extends State<NotAloneApp> {
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF2DD4CF),
             ),
-            textTheme: GoogleFonts.interTextTheme(),
-            primaryTextTheme: GoogleFonts.interTextTheme(),
+            fontFamily: sfPro,
+            textTheme: sfTextTheme,
+            primaryTextTheme: sfTextTheme,
             filledButtonTheme: FilledButtonThemeData(
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF2DD4CF),

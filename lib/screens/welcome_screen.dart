@@ -335,7 +335,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               ? _t('Sign up', 'Registrera dig')
                               : _t('Sign in', 'Logga in'),
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: textMuted, fontSize: 24),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         const SizedBox(height: 24),
                         Text(
@@ -448,7 +452,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                         : _t('Sign in', 'Logga in'),
                                     style: const TextStyle(
                                         fontSize: 22,
-                                        fontWeight: FontWeight.w600),
+                                        fontWeight: FontWeight.w700),
                                   ),
                           ),
                         ),
