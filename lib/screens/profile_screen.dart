@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
@@ -14,16 +19,33 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  static const _avatarBucket = 'avatars';
+  static const _maxOriginalBytes = 15 * 1024 * 1024;
+  static const _targetMaxBytes = 600 * 1024;
+
   final _usernameController = TextEditingController();
   final _fullNameController = TextEditingController();
+  final _ageController = TextEditingController();
   final _bioController = TextEditingController();
   final _cityController = TextEditingController();
   final _interestsController = TextEditingController();
   String _avatarUrl = '';
+  String _avatarPresetId = '';
   bool _saving = false;
+  bool _uploadingAvatar = false;
 
   bool get isSv => widget.appState.locale.languageCode == 'sv';
   String _t(String en, String sv) => isSv ? sv : en;
+
+  String _fixMojibake(String value) {
+    return value
+        .replaceAll('Ã¥', 'å')
+        .replaceAll('Ã¤', 'ä')
+        .replaceAll('Ã¶', 'ö')
+        .replaceAll('Ã…', 'Å')
+        .replaceAll('Ã„', 'Ä')
+        .replaceAll('Ã–', 'Ö');
+  }
 
   @override
   void initState() {
@@ -35,6 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _usernameController.dispose();
     _fullNameController.dispose();
+    _ageController.dispose();
     _bioController.dispose();
     _cityController.dispose();
     _interestsController.dispose();
@@ -44,57 +67,257 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _loadProfile() {
     final user = Supabase.instance.client.auth.currentUser;
     final metadata = user?.userMetadata ?? const {};
-    _usernameController.text = (metadata['username'] ?? '').toString();
-    _fullNameController.text = (metadata['full_name'] ?? '').toString();
-    _bioController.text = (metadata['bio'] ?? '').toString();
-    _cityController.text = (metadata['city'] ?? '').toString();
-    _interestsController.text = (metadata['interests'] ?? '').toString();
-    _avatarUrl = (metadata['avatar_url'] ?? '').toString();
+    _usernameController.text = _fixMojibake((metadata['username'] ?? '').toString());
+    _fullNameController.text = _fixMojibake((metadata['full_name'] ?? '').toString());
+    _ageController.text = (metadata['age'] ?? '').toString();
+    _bioController.text = _fixMojibake((metadata['bio'] ?? '').toString());
+    _cityController.text = _fixMojibake((metadata['city'] ?? '').toString());
+    _interestsController.text = _fixMojibake((metadata['interests'] ?? '').toString());
+    _avatarUrl = _fixMojibake((metadata['avatar_url'] ?? '').toString());
+    _avatarPresetId = (metadata['avatar_preset_id'] ?? '').toString();
   }
 
-  Future<void> _editAvatarUrl() async {
-    final controller = TextEditingController(text: _avatarUrl);
-    final value = await showDialog<String>(
+  Future<void> _showAvatarPicker() async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Colors.white24),
+      backgroundColor: const Color(0xFF0F1A1A),
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _t('Choose avatar', 'Välj avatar'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _presetAvatars.length + 1,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    if (index == _presetAvatars.length) {
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+                          await _pickAndUploadAvatar();
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFF2DD4CF)),
+                            color: Colors.white10,
+                          ),
+                          child: const Icon(
+                            Icons.add_a_photo_outlined,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      );
+                    }
+
+                    final preset = _presetAvatars[index];
+                    final selected = _avatarPresetId == preset.id && _avatarUrl.isEmpty;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () {
+                        setState(() {
+                          _avatarPresetId = preset.id;
+                          _avatarUrl = '';
+                        });
+                        Navigator.pop(sheetContext);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white10,
+                          border: Border.all(
+                            color: selected ? const Color(0xFF2DD4CF) : Colors.white24,
+                            width: selected ? 3 : 1,
+                          ),
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            preset.assetPath,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, _, __) => const Icon(
+                              Icons.person,
+                              color: Colors.white70,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-          title: Text(_t('Upload image', 'Ladda upp bild')),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: _t('Image URL', 'Bild-URL'),
-              hintText: 'https://...',
-            ),
-            keyboardType: TextInputType.url,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_t('Cancel', 'Avbryt')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
-              child: Text(_t('Save', 'Spara')),
-            ),
-          ],
         );
       },
     );
-    controller.dispose();
-    if (value == null || !mounted) return;
-    setState(() => _avatarUrl = value.trim());
+  }
+
+  Uint8List? _compressAvatar(Uint8List originalBytes) {
+    final decoded = img.decodeImage(originalBytes);
+    if (decoded == null) return null;
+
+    final longestSide = decoded.width > decoded.height ? decoded.width : decoded.height;
+    final resized = longestSide > 1080
+        ? (decoded.width >= decoded.height
+            ? img.copyResize(decoded, width: 1080)
+            : img.copyResize(decoded, height: 1080))
+        : decoded;
+
+    int quality = 84;
+    List<int> jpg = img.encodeJpg(resized, quality: quality);
+    while (jpg.length > _targetMaxBytes && quality > 56) {
+      quality -= 7;
+      jpg = img.encodeJpg(resized, quality: quality);
+    }
+    return Uint8List.fromList(jpg);
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    if (_uploadingAvatar) return;
+
+    XFile? picked;
+    try {
+      final picker = ImagePicker();
+      picked = await picker.pickImage(source: ImageSource.gallery);
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      final msg = e.code == 'photo_access_denied'
+          ? _t(
+              'Photo access denied. Allow Photos access in iOS Settings.',
+              'Fotoåtkomst nekad. Tillåt Bilder i iOS-inställningar.',
+            )
+          : '${_t('Could not open photo picker', 'Kunde inte öppna bildväljaren')}: ${e.message ?? e.code}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('${_t('Could not open photo picker', 'Kunde inte öppna bildväljaren')}: $e'),
+        ),
+      );
+      return;
+    }
+
+    if (picked == null) return;
+
+    final originalBytes = await picked.readAsBytes();
+    if (originalBytes.length > _maxOriginalBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Image is too large. Max 15 MB before upload.',
+              'Bilden är för stor. Max 15 MB före uppladdning.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final uploadBytes = _compressAvatar(originalBytes);
+    if (uploadBytes == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Invalid image file', 'Ogiltig bildfil'))),
+      );
+      return;
+    }
+
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    setState(() => _uploadingAvatar = true);
+    try {
+      final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = '$userId/$fileName';
+
+      await Supabase.instance.client.storage.from(_avatarBucket).uploadBinary(
+            path,
+            uploadBytes,
+            fileOptions: const FileOptions(
+              upsert: true,
+              contentType: 'image/jpeg',
+            ),
+          );
+      final publicUrl =
+          Supabase.instance.client.storage.from(_avatarBucket).getPublicUrl(path);
+
+      if (!mounted) return;
+      setState(() => _avatarPresetId = '');
+      setState(() => _avatarUrl = publicUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Image uploaded. Save profile to keep it.',
+              'Bild uppladdad. Spara profilen för att behålla den.',
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'Upload failed. Ensure Storage bucket "avatars" exists and is public.',
+              'Uppladdning misslyckades. Kontrollera att Storage-bucket "avatars" finns och är publik.',
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
   }
 
   Future<void> _saveProfile() async {
     final username = _usernameController.text.trim();
+    final ageRaw = _ageController.text.trim();
+    final age = ageRaw.isEmpty ? null : int.tryParse(ageRaw);
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_t('Username is required', 'Användarnamn krävs'))),
+      );
+      return;
+    }
+    if (ageRaw.isNotEmpty && age == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Age must be a number', 'Ålder måste vara ett nummer'))),
+      );
+      return;
+    }
+    if (age != null && (age < 13 || age > 120)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_t('Age must be between 13 and 120', 'Ålder måste vara mellan 13 och 120'))),
       );
       return;
     }
@@ -105,11 +328,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         UserAttributes(
           data: {
             'username': username,
-            'full_name': _fullNameController.text.trim(),
-            'bio': _bioController.text.trim(),
-            'city': _cityController.text.trim(),
-            'interests': _interestsController.text.trim(),
+            'full_name': _fixMojibake(_fullNameController.text.trim()),
+            'age': age,
+            'bio': _fixMojibake(_bioController.text.trim()),
+            'city': _fixMojibake(_cityController.text.trim()),
+            'interests': _fixMojibake(_interestsController.text.trim()),
             'avatar_url': _avatarUrl,
+            'avatar_preset_id': _avatarPresetId,
           },
         ),
       );
@@ -151,6 +376,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  List<TextInputFormatter> get _svTextFormatters {
+    if (!isSv) return const [];
+    return const [_SwedishKeyMapFormatter()];
+  }
+
   @override
   Widget build(BuildContext context) {
     final email = Supabase.instance.client.auth.currentUser?.email ?? '';
@@ -172,29 +402,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Center(
                     child: Stack(
                       children: [
-                        CircleAvatar(
-                          radius: 52,
-                          backgroundColor: Colors.white12,
-                          backgroundImage:
-                              _avatarUrl.isEmpty ? null : NetworkImage(_avatarUrl),
-                          child: _avatarUrl.isEmpty
-                              ? const Icon(Icons.person, size: 44, color: Colors.white70)
-                              : null,
+                        _AvatarPreview(
+                          avatarUrl: _avatarUrl,
+                          avatarPresetId: _avatarPresetId,
                         ),
                         Positioned(
                           right: 0,
                           bottom: 0,
                           child: FilledButton(
-                            onPressed: _editAvatarUrl,
+                            onPressed: _uploadingAvatar ? null : _showAvatarPicker,
                             style: FilledButton.styleFrom(
                               minimumSize: const Size(42, 42),
                               padding: EdgeInsets.zero,
                               shape: const CircleBorder(),
                             ),
-                            child: const Icon(Icons.edit, size: 18),
+                            child: _uploadingAvatar
+                                ? const SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.photo_camera_outlined, size: 18),
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      _t(
+                        'Choose avatar or upload (max 15 MB, auto compressed)',
+                        'Välj avatar eller ladda upp (max 15 MB, komprimeras automatiskt)',
+                      ),
+                      style: const TextStyle(color: Colors.white60, fontSize: 13),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -202,6 +443,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _usernameController,
+                    inputFormatters: _svTextFormatters,
+                    keyboardType: TextInputType.text,
+                    textCapitalization: TextCapitalization.none,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(),
                   ),
@@ -210,8 +458,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _fullNameController,
+                    inputFormatters: _svTextFormatters,
+                    keyboardType: TextInputType.name,
+                    textCapitalization: TextCapitalization.words,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(),
+                  ),
+                  const SizedBox(height: 14),
+                  _fieldLabel(_t('Age', 'Ålder')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _ageController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _inputDecoration(hintText: _t('e.g. 28', 't.ex. 28')),
                   ),
                   const SizedBox(height: 14),
                   _fieldLabel(_t('Bio', 'Om mig')),
@@ -220,6 +484,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     controller: _bioController,
                     maxLines: 3,
                     minLines: 3,
+                    inputFormatters: _svTextFormatters,
+                    keyboardType: TextInputType.multiline,
+                    textCapitalization: TextCapitalization.sentences,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(),
                   ),
@@ -228,6 +499,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _cityController,
+                    inputFormatters: _svTextFormatters,
+                    keyboardType: TextInputType.streetAddress,
+                    textCapitalization: TextCapitalization.words,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(),
                   ),
@@ -236,6 +514,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _interestsController,
+                    inputFormatters: _svTextFormatters,
+                    keyboardType: TextInputType.text,
+                    textCapitalization: TextCapitalization.words,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(
                       hintText:
@@ -272,6 +557,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SwedishKeyMapFormatter extends TextInputFormatter {
+  const _SwedishKeyMapFormatter();
+
+  static const Map<String, String> _charMap = {
+    '[': 'å',
+    '\'': 'ä',
+    ';': 'ö',
+    '{': 'Å',
+    '"': 'Ä',
+    ':': 'Ö',
+  };
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    var text = newValue.text;
+    for (final entry in _charMap.entries) {
+      text = text.replaceAll(entry.key, entry.value);
+    }
+    if (text == newValue.text) return newValue;
+    return newValue.copyWith(text: text, composing: TextRange.empty);
+  }
+}
+
+class _AvatarPreset {
+  final String id;
+  final String assetPath;
+
+  const _AvatarPreset({
+    required this.id,
+    required this.assetPath,
+  });
+}
+
+const List<_AvatarPreset> _presetAvatars = [
+  _AvatarPreset(id: 'a1', assetPath: 'assets/avatars/a1.png'),
+  _AvatarPreset(id: 'a2', assetPath: 'assets/avatars/a2.png'),
+  _AvatarPreset(id: 'a3', assetPath: 'assets/avatars/a3.png'),
+  _AvatarPreset(id: 'a4', assetPath: 'assets/avatars/a4.png'),
+  _AvatarPreset(id: 'a5', assetPath: 'assets/avatars/a5.png'),
+  _AvatarPreset(id: 'a6', assetPath: 'assets/avatars/a6.png'),
+  _AvatarPreset(id: 'a7', assetPath: 'assets/avatars/a7.png'),
+  _AvatarPreset(id: 'a8', assetPath: 'assets/avatars/a8.png'),
+  _AvatarPreset(id: 'a9', assetPath: 'assets/avatars/a9.png'),
+  _AvatarPreset(id: 'a10', assetPath: 'assets/avatars/a10.png'),
+  _AvatarPreset(id: 'a11', assetPath: 'assets/avatars/a11.png'),
+  _AvatarPreset(id: 'a12', assetPath: 'assets/avatars/a12.png'),
+];
+
+class _AvatarPreview extends StatelessWidget {
+  final String avatarUrl;
+  final String avatarPresetId;
+
+  const _AvatarPreview({
+    required this.avatarUrl,
+    required this.avatarPresetId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: 52,
+        backgroundColor: Colors.white12,
+        backgroundImage: NetworkImage(avatarUrl),
+      );
+    }
+
+    _AvatarPreset? preset;
+    for (final item in _presetAvatars) {
+      if (item.id == avatarPresetId) {
+        preset = item;
+        break;
+      }
+    }
+    if (preset != null) {
+      return CircleAvatar(
+        radius: 52,
+        backgroundColor: Colors.white12,
+        backgroundImage: AssetImage(preset.assetPath),
+      );
+    }
+
+    return const CircleAvatar(
+      radius: 52,
+      backgroundColor: Colors.white12,
+      child: Icon(Icons.person, size: 44, color: Colors.white70),
     );
   }
 }

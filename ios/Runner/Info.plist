@@ -56,5 +56,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Social behöver tillgång till dina bilder för att ladda upp profilbild.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Social behöver tillgång till dina bilder för att spara profilbild.</string>
 </dict>
 </plist>

@@ -74,15 +74,46 @@ class _HubScreenState extends State<HubScreen> {
               enabled: !_loading,
               icon: const Icon(Icons.menu),
               color: const Color(0xFF10201E),
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.white24),
+              ),
               onSelected: _onMenuSelected,
               itemBuilder: (context) => [
                 PopupMenuItem<String>(
                   value: 'profile',
-                  child: Text(_t('Profile', 'Profil')),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_outline, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Profile', 'Profil'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 PopupMenuItem<String>(
                   value: 'logout',
-                  child: Text(_t('Sign out', 'Logga ut')),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.logout, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Sign out', 'Logga ut'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

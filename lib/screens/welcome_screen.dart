@@ -407,7 +407,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          _t('Password', 'Losenord'),
+                          _t('Password', 'Lösenord'),
                           style: const TextStyle(
                               color: Colors.white, fontSize: 16),
                         ),
@@ -454,7 +454,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             child: TextButton(
                               onPressed: _loading ? null : _forgotPassword,
                               child: Text(
-                                _t('Forgot password?', 'Glomt losenord?'),
+                                _t('Forgot password?', 'Glömt lösenord?'),
                                 style: const TextStyle(
                                     color: accent, fontSize: 16),
                               ),
@@ -522,7 +522,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 34),
                   Text(
-                    '© 2026 Social. ${_t('All rights reserved.', 'Alla rattigheter forbehallna.')}',
+                    '© 2026 Social. ${_t('All rights reserved.', 'Alla rättigheter förbehållna.')}',
                     style: TextStyle(color: textMuted, fontSize: 12),
                   ),
                 ],
