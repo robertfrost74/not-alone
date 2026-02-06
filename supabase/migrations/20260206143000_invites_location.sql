@@ -5,6 +5,7 @@ alter table public.invites
   add column if not exists radius_km int default 20;
 
 create index if not exists invites_city_idx on public.invites (city);
+create index if not exists invites_status_idx on public.invites (status);
 
 create or replace function public.haversine_km(
   lat1 double precision,
@@ -98,6 +99,10 @@ as $$
         and i.lat is null and i.lon is null
         and p_city is not null
         and i.city = p_city
+      )
+      or (
+        p_lat is null and p_lon is null
+        and (p_city is null or p_city = '')
       )
     )
   order by i.created_at desc

@@ -558,9 +558,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           .delete()
           .match({'invite_id': inviteId});
       await Supabase.instance.client
-          .from('invites')
-          .delete()
-          .match({'id': inviteId});
+          .rpc('soft_delete_invite', params: {'invite_id': inviteId});
       if (!mounted) return;
       _reloadInvites();
     } catch (e) {
