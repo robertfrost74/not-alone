@@ -364,10 +364,10 @@ class _ChoiceWrap extends StatelessWidget {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: options
+        children: options
           .map(
-            (option) => ChoiceChip(
-              label: Text(option.label),
+            (option) => SocialChoiceChip(
+              label: option.label,
               selected: option.value == selected,
               onSelected: (_) => onChanged(option.value),
             ),

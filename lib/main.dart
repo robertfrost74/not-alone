@@ -6,7 +6,6 @@ import 'state/app_state.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/language_screen.dart';
 import 'screens/email_screen.dart';
-import 'screens/hub_screen.dart';
 import 'screens/request_screen.dart';
 import 'screens/meet_screen.dart';
 import 'screens/invites_screen.dart';
@@ -103,10 +102,10 @@ class _NotAloneAppState extends State<NotAloneApp> {
           routes: {
             '/': (_) => user == null
                 ? WelcomeScreen(appState: _appState)
-                : HubScreen(appState: _appState),
+                : InvitesScreen(appState: _appState),
             '/language': (_) => LanguageScreen(appState: _appState),
             '/email': (_) => EmailScreen(appState: _appState),
-            '/hub': (_) => HubScreen(appState: _appState),
+            '/hub': (_) => InvitesScreen(appState: _appState),
             '/invites': (_) => InvitesScreen(appState: _appState),
 
             // Request screen is opened via MaterialPageRoute (we pass energy),

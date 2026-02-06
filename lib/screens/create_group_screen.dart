@@ -66,6 +66,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         'group_id': groupId,
         'user_id': user.id,
         'role': 'owner',
+        'display_name': _displayNameFor(user),
       });
 
       if (!mounted) return;
@@ -90,6 +91,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _displayNameFor(User user) {
+    final metadata = user.userMetadata ?? const {};
+    final username = (metadata['username'] ?? '').toString().trim();
+    final fullName = (metadata['full_name'] ?? '').toString().trim();
+    final email = (user.email ?? '').trim();
+    if (username.isNotEmpty) return username;
+    if (fullName.isNotEmpty) return fullName;
+    return email.isNotEmpty ? email : user.id;
   }
 
   InputDecoration _inputDecoration({String? hint}) {

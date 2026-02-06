@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import 'welcome_screen.dart';
-import 'hub_screen.dart';
+import 'invites_screen.dart';
 
 class EnergyScreen extends StatefulWidget {
   final AppState appState;
@@ -42,7 +42,7 @@ class _EnergyScreenState extends State<EnergyScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => HubScreen(appState: widget.appState),
+          builder: (_) => InvitesScreen(appState: widget.appState),
         ),
       );
     } on PostgrestException catch (e) {

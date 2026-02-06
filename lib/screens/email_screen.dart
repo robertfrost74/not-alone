@@ -26,7 +26,7 @@ class _EmailScreenState extends State<EmailScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacementNamed(context, '/hub');
+      Navigator.pushReplacementNamed(context, '/invites');
     } catch (e) {
       debugPrint('LOGIN ERROR: $e');
       if (!mounted) return;

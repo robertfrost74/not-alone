@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import '../widgets/social_chrome.dart';
 import 'create_group_screen.dart';
+import 'group_chat_screen.dart';
+import 'direct_chat_screen.dart';
 
 class GroupCard {
   final String id;
@@ -229,6 +231,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
         'group_id': group.id,
         'user_id': user.id,
         'role': 'member',
+        'display_name': _displayNameFor(user),
       });
 
       final username =
@@ -292,12 +295,11 @@ class _GroupsScreenState extends State<GroupsScreen> {
   Future<void> _confirmLeave(GroupCard group) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SocialDialog(
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
         backgroundColor: const Color(0xFF0F1A1A),
-        title: Text(
-          _t('Leave group?', 'Lämna grupp?'),
-          style: const TextStyle(color: Colors.white),
-        ),
+        title: Text(_t('Leave group?', 'Lämna grupp?')),
         content: Text(
           _t(
             'You can rejoin if you get invited again.',
@@ -352,12 +354,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
   Future<void> _confirmDelete(GroupCard group) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SocialDialog(
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
         backgroundColor: const Color(0xFF0F1A1A),
-        title: Text(
-          _t('Delete group?', 'Radera grupp?'),
-          style: const TextStyle(color: Colors.white),
-        ),
+        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        title: Text(_t('Delete group?', 'Radera grupp?')),
         content: Text(
           _t(
             'This will remove the group for everyone.',
@@ -372,7 +376,10 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
             child: Text(_t('Delete', 'Radera')),
           ),
         ],
@@ -384,6 +391,236 @@ class _GroupsScreenState extends State<GroupsScreen> {
     }
   }
 
+  String _displayNameFor(User user) {
+    final metadata = user.userMetadata ?? const {};
+    final username = (metadata['username'] ?? '').toString().trim();
+    final fullName = (metadata['full_name'] ?? '').toString().trim();
+    final email = (user.email ?? '').trim();
+    if (username.isNotEmpty) return username;
+    if (fullName.isNotEmpty) return fullName;
+    return email.isNotEmpty ? email : user.id;
+  }
+
+  Future<void> _showMembers(GroupCard group) async {
+    final supabase = Supabase.instance.client;
+    final rows = await supabase
+        .from('group_members')
+        .select('user_id, display_name')
+        .match({'group_id': group.id});
+    final members = rows is List
+        ? rows
+            .whereType<Map<String, dynamic>>()
+            .map((m) => {
+                  'user_id': (m['user_id'] ?? '').toString(),
+                  'display_name': (m['display_name'] ?? '').toString().trim(),
+                })
+            .where((m) => (m['user_id'] ?? '').toString().isNotEmpty)
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+        backgroundColor: const Color(0xFF0F1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.white24),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _t('Members', 'Medlemmar'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (members.isEmpty)
+                  Text(
+                    _t('No members yet', 'Inga medlemmar ännu'),
+                    style: const TextStyle(color: Colors.white70),
+                  )
+                else
+                  ...members.map(
+                    (m) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        onTap: () => _showUserProfile(
+                          (m['user_id'] ?? '').toString(),
+                          (m['display_name'] ?? '').toString(),
+                        ),
+                        child: Text(
+                          (m['display_name'] ?? '').toString().isNotEmpty
+                              ? (m['display_name'] ?? '').toString()
+                              : (m['user_id'] ?? '').toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(_t('Close', 'Stäng')),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showUserProfile(String userId, String displayName) async {
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null || userId.isEmpty) return;
+
+    final profileRows =
+        await supabase.from('profiles').select().match({'id': userId});
+    final profile = (profileRows is List && profileRows.isNotEmpty)
+        ? profileRows.first as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    final age = profile['age']?.toString() ?? '';
+    final gender = profile['gender']?.toString() ?? '';
+    final bio = profile['bio']?.toString() ?? '';
+
+    final blockedRows = await supabase
+        .from('user_blocks')
+        .select('id')
+        .match({'blocker_id': currentUser.id, 'blocked_id': userId});
+    final isBlocked = blockedRows is List && blockedRows.isNotEmpty;
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+        backgroundColor: const Color(0xFF0F1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.white24),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName.isNotEmpty
+                      ? displayName
+                      : _t('User', 'Användare'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (age.isNotEmpty)
+                  Text(
+                    _t('Age: ', 'Ålder: ') + age,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                if (gender.isNotEmpty)
+                  Text(
+                    _t('Gender: ', 'Kön: ') + gender,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                if (bio.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    bio,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(_t('Close', 'Stäng')),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DirectChatScreen(
+                              appState: widget.appState,
+                              otherUserId: userId,
+                              otherDisplayName: displayName.isNotEmpty
+                                  ? displayName
+                                  : _t('Chat', 'Chatt'),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(_t('Message', 'Meddela')),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            isBlocked ? Colors.white24 : const Color(0xFFDC2626),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        if (isBlocked) {
+                          await supabase.from('user_blocks').delete().match({
+                            'blocker_id': currentUser.id,
+                            'blocked_id': userId,
+                          });
+                        } else {
+                          await supabase.from('user_blocks').insert({
+                            'blocker_id': currentUser.id,
+                            'blocked_id': userId,
+                          });
+                        }
+                        if (mounted) Navigator.pop(context);
+                      },
+                      child: Text(
+                        isBlocked ? _t('Unblock', 'Avblockera') : _t('Block', 'Blockera'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _label(String text) {
     return Text(
       text,
@@ -392,23 +629,45 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Widget _buildGroupCard(GroupCard group) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Column(
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GroupChatScreen(
+              appState: widget.appState,
+              groupId: group.id,
+              groupName: group.name,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            group.name,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chat_bubble_outline,
+                  size: 18, color: Colors.white70),
+            ],
           ),
           if (group.description.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -422,7 +681,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
             ),
           ],
           const SizedBox(height: 10),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 _t('Members: ', 'Medlemmar: ') + group.membersCount.toString(),
@@ -432,88 +692,98 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   color: Colors.white,
                 ),
               ),
-              const Spacer(),
-              if (group.isOwner)
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2DD4CF),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        _t('Owner', 'Ägare'),
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 30,
-                      child: OutlinedButton(
-                        onPressed: () => _confirmDelete(group),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.white24),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          minimumSize: const Size(0, 30),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _t('Delete', 'Radera'),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (group.isOwner)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2DD4CF),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              _t('Owner', 'Ägare'),
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        if (group.ownerName != null &&
+                            group.ownerName!.trim().isNotEmpty &&
+                            !group.isOwner)
+                          Text(
+                            group.ownerName!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white60,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        SizedBox(
+                          height: 30,
+                          child: OutlinedButton(
+                            onPressed: () => _showMembers(group),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.white24),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              minimumSize: const Size(0, 30),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              _t('Members', 'Medlemmar'),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                )
-              else if (group.ownerName != null &&
-                  group.ownerName!.trim().isNotEmpty)
-                Text(
-                  group.ownerName!,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white60,
-                    fontWeight: FontWeight.w600,
                   ),
-                )
-              else
-                const SizedBox.shrink(),
-              if (!group.isOwner) ...[
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 30,
-                  child: OutlinedButton(
-                    onPressed: () => _confirmLeave(group),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white24),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      minimumSize: const Size(0, 30),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      _t('Leave', 'Lämna'),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                  SizedBox(
+                    height: 30,
+                    child: OutlinedButton(
+                      onPressed: () => group.isOwner
+                          ? _confirmDelete(group)
+                          : _confirmLeave(group),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 30),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        group.isOwner
+                            ? _t('Delete', 'Radera')
+                            : _t('Leave', 'Lämna'),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ],
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -556,6 +826,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.08),
@@ -640,6 +911,23 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : ListView(
                       children: [
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CreateGroupScreen(
+                                    appState: widget.appState,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Text(_t('Create group', 'Skapa grupp')),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         _invitesSection(),
                         _section(
                           _t('My groups', 'Mina grupper'),

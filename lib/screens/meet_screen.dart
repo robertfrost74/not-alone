@@ -160,45 +160,47 @@ class _MeetScreenState extends State<MeetScreen> {
       isScrollControlled: true,
       builder: (context) {
         return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 12,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  isSv ? 'Mötesplats' : 'Meeting place',
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: controller,
-                  style: const TextStyle(fontSize: 16),
-                  decoration: InputDecoration(
-                    hintText:
-                        isSv ? 'Skriv in mötesplats' : 'Enter meeting place',
-                    border: const OutlineInputBorder(),
+          child: SocialSheetContent(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 12,
+                right: 12,
+                top: 12,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isSv ? 'Mötesplats' : 'Meeting place',
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w700),
                   ),
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: () =>
-                        Navigator.pop(context, controller.text.trim()),
-                    child: Text(isSv ? 'Spara' : 'Save'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: controller,
+                    style: const TextStyle(fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText:
+                          isSv ? 'Skriv in mötesplats' : 'Enter meeting place',
+                      border: const OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                    textInputAction: TextInputAction.done,
                   ),
-                ),
-                const SizedBox(height: 8),
-              ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(context, controller.text.trim()),
+                      child: Text(isSv ? 'Spara' : 'Save'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
           ),
         );

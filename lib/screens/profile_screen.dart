@@ -78,90 +78,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
       showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _t('Choose avatar', 'Välj avatar'),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+          child: SocialSheetContent(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _t('Choose avatar', 'Välj avatar'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _presetAvatars.length + 1,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1,
-                  ),
-                  itemBuilder: (context, index) {
-                    if (index == _presetAvatars.length) {
+                  const SizedBox(height: 12),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _presetAvatars.length + 1,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 5,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1,
+                    ),
+                    itemBuilder: (context, index) {
+                      if (index == _presetAvatars.length) {
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: () async {
+                            Navigator.pop(sheetContext);
+                            await _pickAndUploadAvatar();
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFF2DD4CF)),
+                              color: Colors.white10,
+                            ),
+                            child: const Icon(
+                              Icons.add_a_photo_outlined,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final preset = _presetAvatars[index];
+                      final selected = _avatarPresetId == preset.id && _avatarUrl.isEmpty;
                       return InkWell(
                         borderRadius: BorderRadius.circular(999),
-                        onTap: () async {
+                        onTap: () {
+                          setState(() {
+                            _avatarPresetId = preset.id;
+                            _avatarUrl = '';
+                          });
                           Navigator.pop(sheetContext);
-                          await _pickAndUploadAvatar();
                         },
                         child: Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF2DD4CF)),
                             color: Colors.white10,
+                            border: Border.all(
+                              color: selected ? const Color(0xFF2DD4CF) : Colors.white24,
+                              width: selected ? 3 : 1,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.add_a_photo_outlined,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      );
-                    }
-
-                    final preset = _presetAvatars[index];
-                    final selected = _avatarPresetId == preset.id && _avatarUrl.isEmpty;
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () {
-                        setState(() {
-                          _avatarPresetId = preset.id;
-                          _avatarUrl = '';
-                        });
-                        Navigator.pop(sheetContext);
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white10,
-                          border: Border.all(
-                            color: selected ? const Color(0xFF2DD4CF) : Colors.white24,
-                            width: selected ? 3 : 1,
-                          ),
-                        ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            preset.assetPath,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, _, __) => const Icon(
-                              Icons.person,
-                              color: Colors.white70,
-                              size: 24,
+                          child: ClipOval(
+                            child: Image.asset(
+                              preset.assetPath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, _, __) => const Icon(
+                                Icons.person,
+                                color: Colors.white70,
+                                size: 24,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -208,6 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => _saving = true);
     try {
+      final supabase = Supabase.instance.client;
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(
           data: {
@@ -223,6 +226,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           },
         ),
       );
+      await supabase.from('profiles').upsert({
+        'id': supabase.auth.currentUser?.id,
+        'username': username,
+        'full_name': _fixMojibake(_fullNameController.text.trim()),
+        'age': age,
+        'gender': _gender,
+        'bio': _fixMojibake(_bioController.text.trim()),
+        'city': _fixMojibake(_cityController.text.trim()),
+        'interests': _fixMojibake(_interestsController.text.trim()),
+        'avatar_url': _fixMojibake(_avatarUrl),
+        'avatar_preset_id': _avatarPresetId,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser != null) {
+        await supabase.from('group_members').update({
+          'display_name': username,
+        }).match({'user_id': currentUser.id});
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_t('Profile saved', 'Profil sparad'))),
@@ -364,13 +386,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      ChoiceChip(
-                        label: Text(_t('Man', 'Man')),
+                      SocialChoiceChip(
+                        label: _t('Man', 'Man'),
                         selected: _gender == 'male',
                         onSelected: (_) => setState(() => _gender = 'male'),
                       ),
-                      ChoiceChip(
-                        label: Text(_t('Woman', 'Kvinna')),
+                      SocialChoiceChip(
+                        label: _t('Woman', 'Kvinna'),
                         selected: _gender == 'female',
                         onSelected: (_) => setState(() => _gender = 'female'),
                       ),

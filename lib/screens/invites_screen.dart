@@ -2,7 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import 'messages_screen.dart';
+import 'profile_screen.dart';
+import 'groups_screen.dart';
 import 'request_screen.dart';
+import 'welcome_screen.dart';
 import '../widgets/social_chrome.dart';
 
 class InvitesScreen extends StatefulWidget {
@@ -15,6 +19,7 @@ class InvitesScreen extends StatefulWidget {
 
 class _InvitesScreenState extends State<InvitesScreen> {
   bool _joining = false;
+  bool _menuLoading = false;
   late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
@@ -105,11 +110,67 @@ class _InvitesScreenState extends State<InvitesScreen> {
     });
   }
 
+  Future<void> _signOut() async {
+    setState(() => _menuLoading = true);
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => WelcomeScreen(appState: widget.appState),
+        ),
+        (route) => false,
+      );
+    } finally {
+      if (mounted) setState(() => _menuLoading = false);
+    }
+  }
+
+  Future<void> _onMenuSelected(String value) async {
+    if (value == 'profile') {
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(appState: widget.appState),
+        ),
+      );
+      return;
+    }
+    if (value == 'groups') {
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupsScreen(appState: widget.appState),
+        ),
+      );
+      return;
+    }
+    if (value == 'messages') {
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatsScreen(appState: widget.appState),
+        ),
+      );
+      return;
+    }
+    if (value == 'invites') {
+      if (!mounted) return;
+      return;
+    }
+    if (value == 'logout') {
+      await _signOut();
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     final res = await Supabase.instance.client
         .from('invites')
         .select(
-            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, invite_members(status,user_id)')
+            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(status,user_id)')
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(50);
@@ -117,26 +178,48 @@ class _InvitesScreenState extends State<InvitesScreen> {
     var invites = (res as List).cast<Map<String, dynamic>>();
     if (invites.isEmpty) return invites;
 
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId != null) {
+      final groupRows = await Supabase.instance.client
+          .from('group_members')
+          .select('group_id')
+          .match({'user_id': currentUserId});
+      final memberGroupIds = <String>{};
+      if (groupRows is List) {
+        for (final row in groupRows.whereType<Map<String, dynamic>>()) {
+          final id = row['group_id']?.toString();
+          if (id != null && id.isNotEmpty) memberGroupIds.add(id);
+        }
+      }
+      invites = invites.where((invite) {
+        final groupId = invite['group_id']?.toString();
+        if (groupId == null || groupId.isEmpty) return true;
+        return memberGroupIds.contains(groupId);
+      }).toList();
+    }
+
     Map<String, String> hostNamesById = {};
     try {
       final profilesRes = await Supabase.instance.client
           .from('profiles')
-          .select('id, username, full_name')
+          .select('id, username')
           .limit(2000);
       final profileRows = (profilesRes as List).cast<Map<String, dynamic>>();
       for (final row in profileRows) {
         final id = row['id']?.toString();
         if (id == null || id.isEmpty) continue;
         final username = (row['username'] ?? '').toString().trim();
-        final fullName = (row['full_name'] ?? '').toString().trim();
-        final display = username.isNotEmpty
-            ? username
-            : (fullName.isNotEmpty ? fullName : '');
+        final display = username.isNotEmpty ? username : '';
         if (display.isNotEmpty) hostNamesById[id] = display;
       }
     } catch (_) {
       // Keep invites page resilient if profiles table/policies differ.
     }
+
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final currentUsername =
+        (currentUser?.userMetadata?['username'] ?? '').toString().trim();
+    final currentDisplay = currentUsername.isNotEmpty ? currentUsername : '';
 
     for (final invite in invites) {
       final members =
@@ -149,7 +232,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
       final fallback = hostId.isEmpty
           ? _t('Unknown user', 'Okänd användare')
           : hostId.substring(0, hostId.length < 8 ? hostId.length : 8);
-      invite['host_display_name'] = hostNamesById[hostId] ?? fallback;
+      if (currentDisplay.isNotEmpty && hostId == currentUserId) {
+        invite['host_display_name'] = currentDisplay;
+      } else {
+        invite['host_display_name'] = hostNamesById[hostId] ?? fallback;
+      }
+      final group = invite['groups'] as Map<String, dynamic>?;
+      invite['group_name'] = (group?['name'] ?? '').toString();
     }
     return invites;
   }
@@ -181,48 +270,33 @@ class _InvitesScreenState extends State<InvitesScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
+        return SocialDialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
           backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Colors.white24),
-          ),
-          titleTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-          ),
-          contentTextStyle: const TextStyle(
-            color: Colors.white70,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
           title: Text(_t('Joined users', 'Tackat ja')),
           content: users.isEmpty
               ? Text(_t('No one has joined yet.', 'Ingen har tackat ja ännu.'))
-              : SizedBox(
-                  width: 320,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: users
-                          .map(
-                            (id) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                isSv
-                                    ? 'Användare ${id.substring(0, id.length < 8 ? id.length : 8)}'
-                                    : 'User ${id.substring(0, id.length < 8 ? id.length : 8)}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+              : SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: users
+                        .map(
+                          (id) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              isSv
+                                  ? 'Användare ${id.substring(0, id.length < 8 ? id.length : 8)}'
+                                  : 'User ${id.substring(0, id.length < 8 ? id.length : 8)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          )
-                          .toList(),
-                    ),
+                          ),
+                        )
+                        .toList(),
                   ),
                 ),
           actions: [
@@ -381,6 +455,32 @@ class _InvitesScreenState extends State<InvitesScreen> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
+            final activityItems = [
+              DropdownMenuItem(
+                  value: 'walk',
+                  child: Text(isSv ? 'Promenad' : 'Walk')),
+              const DropdownMenuItem(value: 'coffee', child: Text('Fika')),
+              DropdownMenuItem(
+                  value: 'workout',
+                  child: Text(isSv ? 'Träna' : 'Workout')),
+              DropdownMenuItem(
+                  value: 'lunch',
+                  child: Text(isSv ? 'Luncha' : 'Lunch')),
+              DropdownMenuItem(
+                  value: 'dinner',
+                  child: Text(isSv ? 'Middag' : 'Dinner')),
+            ];
+            final activityValues =
+                activityItems.map((e) => e.value).whereType<String>();
+            if (!activityValues.contains(activity)) {
+              activityItems.add(
+                DropdownMenuItem(
+                  value: activity,
+                  child: Text(_activityLabel(activity)),
+                ),
+              );
+            }
+
             Future<void> pickMeetingTime() async {
               final date = await showDatePicker(
                 context: sheetContext,
@@ -403,33 +503,34 @@ class _InvitesScreenState extends State<InvitesScreen> {
             }
 
             return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _t('Edit invite', 'Redigera inbjudan'),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _t('Activity', 'Aktivitet'),
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
+              child: SocialSheetContent(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    8,
+                    12,
+                    MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _t('Edit invite', 'Redigera inbjudan'),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _t('Activity', 'Aktivitet'),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
                         initialValue: activity,
                         dropdownColor: const Color(0xFF10201E),
                         style: const TextStyle(color: Colors.white),
@@ -440,148 +541,134 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        items: [
-                          DropdownMenuItem(
-                              value: 'walk',
-                              child: Text(isSv ? 'Promenad' : 'Walk')),
-                          const DropdownMenuItem(
-                              value: 'coffee', child: Text('Fika')),
-                          DropdownMenuItem(
-                              value: 'workout',
-                              child: Text(isSv ? 'Träna' : 'Workout')),
-                          DropdownMenuItem(
-                              value: 'lunch',
-                              child: Text(isSv ? 'Luncha' : 'Lunch')),
-                          DropdownMenuItem(
-                              value: 'dinner',
-                              child: Text(isSv ? 'Middag' : 'Dinner')),
-                        ],
+                        items: activityItems,
                         onChanged: (v) =>
                             setSheetState(() => activity = v ?? activity),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _t('Meeting place', 'Mötesplats'),
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: placeController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: _t('Enter place', 'Ange plats'),
-                          hintStyle: const TextStyle(color: Colors.white54),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.08),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 12),
+                        Text(
+                          _t('Meeting place', 'Mötesplats'),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: placeController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: _t('Enter place', 'Ange plats'),
+                            hintStyle: const TextStyle(color: Colors.white54),
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: 0.08),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${_t('Time', 'Tid')}: ${_formatDateTime(meetingTime.toIso8601String())}',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: pickMeetingTime,
-                          child: Text(_t('Change time', 'Ändra tid')),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${_t('Duration', 'Längd')}: $duration min',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      Slider(
-                        min: 10,
-                        max: 120,
-                        divisions: 110,
-                        value: duration.toDouble().clamp(10, 120),
-                        label: '$duration',
-                        onChanged: (v) =>
-                            setSheetState(() => duration = v.round()),
-                      ),
-                      if (mode != 'one_to_one') ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         Text(
-                          '${_t('Max participants', 'Max antal')}: $maxParticipants',
+                          '${_t('Time', 'Tid')}: ${_formatDateTime(meetingTime.toIso8601String())}',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: pickMeetingTime,
+                            child: Text(_t('Change time', 'Ändra tid')),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${_t('Duration', 'Längd')}: $duration min',
                           style: const TextStyle(
                               color: Colors.white, fontWeight: FontWeight.w600),
                         ),
                         Slider(
-                          min: 2,
-                          max: 10,
-                          divisions: 8,
-                          value: maxParticipants.toDouble().clamp(2, 10),
-                          label: '$maxParticipants',
+                          min: 10,
+                          max: 120,
+                          divisions: 110,
+                          value: duration.toDouble().clamp(10, 120),
+                          label: '$duration',
                           onChanged: (v) =>
-                              setSheetState(() => maxParticipants = v.round()),
+                              setSheetState(() => duration = v.round()),
                         ),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        '${_t('Age range', 'Ålders spann')}: ${ageRange.start.round()}-${ageRange.end.round()}',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      RangeSlider(
-                        min: 16,
-                        max: 120,
-                        divisions: 104,
-                        values: ageRange,
-                        labels: RangeLabels(
-                          '${ageRange.start.round()}',
-                          '${ageRange.end.round()}',
+                        if (mode != 'one_to_one') ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '${_t('Max participants', 'Max antal')}: $maxParticipants',
+                            style: const TextStyle(
+                                color: Colors.white, fontWeight: FontWeight.w600),
+                          ),
+                          Slider(
+                            min: 2,
+                            max: 10,
+                            divisions: 8,
+                            value: maxParticipants.toDouble().clamp(2, 10),
+                            label: '$maxParticipants',
+                            onChanged: (v) =>
+                                setSheetState(() => maxParticipants = v.round()),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_t('Age range', 'Ålders spann')}: ${ageRange.start.round()}-${ageRange.end.round()}',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
                         ),
-                        onChanged: (v) => setSheetState(() => ageRange = v),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _t('Show invite for', 'Visa inbjudan för'),
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          ChoiceChip(
-                            label: Text(_t('All', 'Alla')),
+                        RangeSlider(
+                          min: 16,
+                          max: 120,
+                          divisions: 104,
+                          values: ageRange,
+                          labels: RangeLabels(
+                            '${ageRange.start.round()}',
+                            '${ageRange.end.round()}',
+                          ),
+                          onChanged: (v) => setSheetState(() => ageRange = v),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _t('Show invite for', 'Visa inbjudan för'),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                          SocialChoiceChip(
+                            label: _t('All', 'Alla'),
                             selected: targetGender == 'all',
                             onSelected: (_) =>
                                 setSheetState(() => targetGender = 'all'),
                           ),
-                          ChoiceChip(
-                            label: Text(_t('Men', 'Män')),
+                          SocialChoiceChip(
+                            label: _t('Men', 'Män'),
                             selected: targetGender == 'male',
                             onSelected: (_) =>
                                 setSheetState(() => targetGender = 'male'),
                           ),
-                          ChoiceChip(
-                            label: Text(_t('Women', 'Kvinnor')),
+                          SocialChoiceChip(
+                            label: _t('Women', 'Kvinnor'),
                             selected: targetGender == 'female',
                             onSelected: (_) =>
                                 setSheetState(() => targetGender = 'female'),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(sheetContext, true),
-                          child: Text(_t('Save changes', 'Spara ändringar')),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () => Navigator.pop(sheetContext, true),
+                            child: Text(_t('Save changes', 'Spara ändringar')),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -630,35 +717,24 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final isConfirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) {
-            return AlertDialog(
+            return SocialDialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
               backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: Colors.white24),
-              ),
-              titleTextStyle: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-              ),
-              contentTextStyle: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
               title: Text(_t('Remove invite?', 'Ta bort inbjudan?')),
               content:
                   Text(_t('This cannot be undone.', 'Detta kan inte ångras.')),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text(
-                    _t('Cancel', 'Avbryt'),
-                    style: const TextStyle(color: Colors.white70),
-                  ),
+                  child: Text(_t('Cancel', 'Avbryt')),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                  ),
                   child: Text(_t('Remove', 'Ta bort')),
                 ),
               ],
@@ -837,392 +913,608 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(isSv ? 'Inbjudningar' : 'Invites'),
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
+        appBar: AppBar(
+          title: Text(isSv ? 'Inbjudningar' : 'Invites'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.home_outlined),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RequestScreen(appState: widget.appState),
-                ),
-              );
+              Navigator.of(context)
+                  .pushNamedAndRemoveUntil('/invites', (route) => false);
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _reloadInvites,
-          )
-        ],
-      ),
-      body: SocialBackground(
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: SocialPanel(
-              child: Column(
-                children: [
-                  Column(
+          bottom: TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: const Color(0xFF2DD4CF),
+            tabs: [
+              Tab(text: isSv ? 'Aktuella' : 'Current'),
+              Tab(text: isSv ? 'Mina' : 'Mine'),
+              Tab(text: isSv ? 'Tackat ja' : 'Joined'),
+              Tab(text: isSv ? 'Grupper' : 'Groups'),
+            ],
+          ),
+          actions: [
+            PopupMenuButton<String>(
+              enabled: !_menuLoading,
+              icon: const Icon(Icons.menu),
+              color: const Color(0xFF10201E),
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.white24),
+              ),
+              onSelected: _onMenuSelected,
+              itemBuilder: (context) => [
+                PopupMenuItem<String>(
+                  value: 'profile',
+                  child: Row(
                     children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          isSv ? 'Aktivitet' : 'Activity',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _activity,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.08),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.white24),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                const BorderSide(color: Color(0xFF2DD4CF)),
-                          ),
-                        ),
-                        dropdownColor: const Color(0xFF10201E),
+                      const Icon(Icons.person_outline, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Profile', 'Profil'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
-                        items: [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text(
-                              isSv ? 'Alla' : 'All',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'walk',
-                            child: Text(
-                              isSv ? 'Promenad' : 'Walk',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'workout',
-                            child: Text(
-                              isSv ? 'Träna' : 'Workout',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const DropdownMenuItem(
-                            value: 'coffee',
-                            child: Text(
-                              'Fika',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'lunch',
-                            child: Text(
-                              isSv ? 'Luncha' : 'Lunch',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'dinner',
-                            child: Text(
-                              isSv ? 'Middag' : 'Dinner',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) {
-                          setState(() {
-                            _activity = v ?? 'all';
-                          });
-                        },
                       ),
                     ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'groups',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.groups_outlined,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Groups', 'Grupper'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'messages',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.markunread_outlined,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Chats', 'Chattar'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'invites',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.mail_outline,
+                          color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Invites', 'Inbjudningar'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.logout, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        _t('Sign out', 'Logga ut'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        body: SocialBackground(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SocialPanel(
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                RequestScreen(appState: widget.appState),
+                          ),
+                        );
+                      },
+                      child: Text(_t('Create invite', 'Skapa inbjudan')),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   if (_joining) const LinearProgressIndicator(),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _invitesFuture,
-                      builder: (context, snap) {
-                        if (snap.connectionState == ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-                        if (snap.hasError) {
-                          return Center(child: Text('Error: ${snap.error}'));
-                        }
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: _invitesFuture,
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          if (snap.hasError) {
+                            return Center(child: Text('Error: ${snap.error}'));
+                          }
 
-                        final allItems = snap.data ?? [];
-                        final items = allItems.where(_matchesFilters).toList();
+                          final allItems = snap.data ?? [];
+                          final currentUserId =
+                              Supabase.instance.client.auth.currentUser?.id ?? '';
+                          final filtered =
+                              allItems.where(_matchesFilters).toList();
+                          final hasAnyInvites = allItems.isNotEmpty;
 
-                        if (items.isEmpty) {
-                          return Center(
-                            child: Text(isSv
-                                ? 'Inga öppna inbjudningar för filtret'
-                                : 'No open invites for this filter'),
-                          );
-                        }
+                          final joinedInvites = filtered.where((it) {
+                            final members =
+                                (it['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+                                    const [];
+                            return members.any((m) =>
+                                m['user_id']?.toString() == currentUserId &&
+                                m['status']?.toString() != 'cannot_attend');
+                          }).toList();
 
-                        return ListView.separated(
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, i) {
-                            final it = items[i];
-                            final place = (it['place'] ?? '').toString();
-                            final meetingTimeLabel =
-                                _formatDateTime(it['meeting_time']);
-                            final timeProgress = _timeLeftProgress(
-                                it['created_at'], it['meeting_time']);
-                            final timeLeftLabel =
-                                _timeLeftLabel(it['meeting_time']);
-                            final status = _inviteStatus(it);
-                            final canDelete = it['host_user_id']?.toString() ==
-                                Supabase.instance.client.auth.currentUser?.id;
+                          final myInvites = filtered
+                              .where((it) =>
+                                  it['host_user_id']?.toString() ==
+                                  currentUserId)
+                              .toList();
 
-                            return Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
+                          final joinedInviteIds =
+                              joinedInvites.map((it) => it['id']?.toString()).toSet();
+
+                          final invitesForMe = filtered.where((it) {
+                            final hostId = it['host_user_id']?.toString();
+                            if (hostId == currentUserId) return false;
+                            final id = it['id']?.toString();
+                            if (id != null && joinedInviteIds.contains(id)) return false;
+                            final groupId = it['group_id']?.toString();
+                            if (groupId != null && groupId.isNotEmpty) return false;
+                            return true;
+                          }).toList();
+
+                          final groupInvites = filtered.where((it) {
+                            final mode = _normalizeMode((it['mode'] ?? '').toString());
+                            return mode != 'one_to_one';
+                          }).toList();
+
+                          Widget buildList(List<Map<String, dynamic>> items) {
+                            if (items.isEmpty) {
+                              return Center(
+                                child: Text(isSv
+                                    ? 'Inga inbjudningar för filtret'
+                                    : 'No invites for this filter'),
+                              );
+                            }
+                            return ListView.separated(
+                              itemCount: items.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, i) {
+                                final it = items[i];
+                                final place = (it['place'] ?? '').toString();
+                                final meetingTimeLabel =
+                                    _formatDateTime(it['meeting_time']);
+                                final timeProgress = _timeLeftProgress(
+                                    it['created_at'], it['meeting_time']);
+                                final timeLeftLabel =
+                                    _timeLeftLabel(it['meeting_time']);
+                                final status = _inviteStatus(it);
+                                final canDelete = it['host_user_id']?.toString() ==
+                                    Supabase.instance.client.auth.currentUser?.id;
+
+                                return Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white24),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _activityLabel(it['activity']),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  _activityLabel(it['activity']),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 18,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  (it['host_display_name'] ?? '')
+                                                      .toString(),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 13,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          TextButton(
+                                            style: TextButton.styleFrom(
+                                              backgroundColor: Colors.white24,
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 10),
+                                              minimumSize: const Size(0, 28),
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize.shrinkWrap,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                            ),
+                                            onPressed: () =>
+                                                _showAcceptedUsersModal(it),
+                                            child: Text(
+                                              _joinedOfMaxLabel(it),
                                               style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 18,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
                                                 color: Colors.white,
                                               ),
                                             ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              (it['host_display_name'] ?? '')
-                                                  .toString(),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            constraints:
+                                                const BoxConstraints(minHeight: 28),
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10),
+                                            decoration: BoxDecoration(
+                                              color: _statusColor(status),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              _statusLabel(status),
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: status == 'full'
+                                                    ? Colors.white
+                                                    : Colors.black,
+                                              ),
+                                            ),
+                                          ),
+                                          if (canDelete) ...[
+                                            const SizedBox(width: 10),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                GestureDetector(
+                                                  onTap: () => _editInvite(it),
+                                                  child: const SizedBox(
+                                                    width: 24,
+                                                    height: 24,
+                                                    child: Icon(Icons.edit_outlined,
+                                                        size: 22),
+                                                  ),
+                                                ),
+                                                GestureDetector(
+                                                  onTap: () => _deleteInvite(it),
+                                                  child: const SizedBox(
+                                                    width: 24,
+                                                    height: 24,
+                                                    child: Icon(Icons.delete_outline,
+                                                        size: 22),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              _countLabel(it),
                                               style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
                                                 fontWeight: FontWeight.w600,
-                                                fontSize: 13,
-                                                color: Colors.white70,
                                               ),
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                      TextButton(
-                                        style: TextButton.styleFrom(
-                                          backgroundColor: Colors.white24,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10),
-                                          minimumSize: const Size(0, 28),
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(999),
                                           ),
-                                        ),
-                                        onPressed: () =>
-                                            _showAcceptedUsersModal(it),
-                                        child: Text(
-                                          _joinedOfMaxLabel(it),
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        constraints: const BoxConstraints(
-                                            minHeight: 28),
-                                        alignment: Alignment.center,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10),
-                                        decoration: BoxDecoration(
-                                          color: _statusColor(status),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          _statusLabel(status),
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                            color: status == 'full'
-                                                ? Colors.white
-                                                : Colors.black,
-                                          ),
-                                        ),
-                                      ),
-                                      if (canDelete) ...[
-                                        const SizedBox(width: 10),
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            GestureDetector(
-                                              onTap: () => _editInvite(it),
-                                              child: const SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child: Icon(Icons.edit_outlined,
-                                                    size: 22),
-                                              ),
+                                          Text(
+                                            '${it['duration']} min',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                            GestureDetector(
-                                              onTap: () => _deleteInvite(it),
-                                              child: const SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child: Icon(Icons.delete_outline,
-                                                    size: 22),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          _countLabel(it),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
                                           ),
-                                        ),
+                                        ],
                                       ),
+                                      const SizedBox(height: 6),
                                       Text(
-                                        '${it['duration']} min',
+                                        isSv
+                                            ? 'Tid: $meetingTimeLabel'
+                                            : 'Time: $meetingTimeLabel',
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 16,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
+                                      const SizedBox(height: 8),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(999),
+                                        child: LinearProgressIndicator(
+                                          value: timeProgress,
+                                          minHeight: 7,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        timeLeftLabel,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (place.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          isSv
+                                              ? 'Mötesplats: $place'
+                                              : 'Meeting place: $place',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                      if ((it['group_name'] ?? '')
+                                          .toString()
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 10, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withValues(
+                                                    alpha: 0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                    color: Colors.white24),
+                                              ),
+                                              child: Text(
+                                                (it['group_name'] ?? '')
+                                                    .toString(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              isSv ? 'Grupp' : 'Group',
+                                              style: const TextStyle(
+                                                color: Colors.white60,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                      const SizedBox(height: 20),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        height: 44,
+                                        child: FilledButton(
+                                          onPressed:
+                                              _joining || !_canJoinStatus(status)
+                                                  ? null
+                                                  : () => _joinInvite(it),
+                                          child: Text(_joinButtonLabel(status)),
+                                        ),
+                                      ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    isSv
-                                        ? 'Tid: $meetingTimeLabel'
-                                        : 'Time: $meetingTimeLabel',
+                                );
+                              },
+                            );
+                          }
+
+                          return Column(
+                            children: [
+                              if (hasAnyInvites) ...[
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    isSv ? 'Aktivitet' : 'Activity',
                                     style: const TextStyle(
-                                      color: Colors.white,
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(999),
-                                    child: LinearProgressIndicator(
-                                      value: timeProgress,
-                                      minHeight: 7,
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  initialValue: _activity,
+                                  decoration: InputDecoration(
+                                    filled: true,
+                                    fillColor: Colors.white.withValues(alpha: 0.08),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Colors.white24),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide:
+                                          const BorderSide(color: Color(0xFF2DD4CF)),
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    timeLeftLabel,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  dropdownColor: const Color(0xFF10201E),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  if (place.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      isSv
-                                          ? 'Mötesplats: $place'
-                                          : 'Meeting place: $place',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'all',
+                                      child: Text(
+                                        isSv ? 'Alla' : 'All',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'walk',
+                                      child: Text(
+                                        isSv ? 'Promenad' : 'Walk',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'workout',
+                                      child: Text(
+                                        isSv ? 'Träna' : 'Workout',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    const DropdownMenuItem(
+                                      value: 'coffee',
+                                      child: Text(
+                                        'Fika',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'lunch',
+                                      child: Text(
+                                        isSv ? 'Luncha' : 'Lunch',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'dinner',
+                                      child: Text(
+                                        isSv ? 'Middag' : 'Dinner',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(height: 20),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 44,
-                                    child: FilledButton(
-                                      onPressed:
-                                          _joining || !_canJoinStatus(status)
-                                              ? null
-                                              : () => _joinInvite(it),
-                                      child: Text(_joinButtonLabel(status)),
-                                    ),
-                                  ),
-                                ],
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _activity = v ?? 'all';
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              Expanded(
+                                child: TabBarView(
+                                  children: [
+                                    buildList(invitesForMe),
+                                    buildList(myInvites),
+                                    buildList(joinedInvites),
+                                    buildList(groupInvites),
+                                  ],
+                                ),
                               ),
-                            );
-                          },
-                        );
-                      },
+                            ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

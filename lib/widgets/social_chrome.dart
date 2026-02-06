@@ -137,3 +137,160 @@ class SocialPanel extends StatelessWidget {
     );
   }
 }
+
+class SocialDialogContent extends StatelessWidget {
+  final Widget child;
+
+  const SocialDialogContent({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: child,
+    );
+  }
+}
+
+class SocialSheetContent extends StatelessWidget {
+  final Widget child;
+
+  const SocialSheetContent({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: child,
+    );
+  }
+}
+
+class SocialChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+
+  const SocialChoiceChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // App standard chip style (use across the app except login screens).
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: true,
+      checkmarkColor: const Color(0xFF2DD4CF),
+      labelStyle: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+      backgroundColor: const Color(0xFF0E1D1C),
+      selectedColor: const Color(0xFF0E1D1C),
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected ? const Color(0xFF2DD4CF) : Colors.white24,
+        ),
+      ),
+      onSelected: onSelected,
+    );
+  }
+}
+
+class SocialDialog extends StatelessWidget {
+  final Widget? title;
+  final Widget content;
+  final List<Widget> actions;
+  final EdgeInsets insetPadding;
+  final EdgeInsets titlePadding;
+  final EdgeInsets contentPadding;
+  final EdgeInsets actionsPadding;
+  final Color backgroundColor;
+  final ShapeBorder shape;
+  final TextStyle? titleTextStyle;
+  final TextStyle? contentTextStyle;
+
+  const SocialDialog({
+    super.key,
+    this.title,
+    required this.content,
+    this.actions = const [],
+    this.insetPadding = const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+    this.titlePadding = const EdgeInsets.fromLTRB(20, 18, 20, 8),
+    this.contentPadding = const EdgeInsets.fromLTRB(20, 0, 20, 16),
+    this.actionsPadding = const EdgeInsets.fromLTRB(20, 0, 20, 16),
+    this.backgroundColor = const Color(0xFF0F1A1A),
+    this.shape = const RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(18)),
+      side: BorderSide(color: Colors.white24),
+    ),
+    this.titleTextStyle,
+    this.contentTextStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final defaultTitleStyle = DefaultTextStyle.of(context).style.copyWith(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.none,
+        );
+    final defaultContentStyle = DefaultTextStyle.of(context).style.copyWith(
+          color: Colors.white70,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.none,
+        );
+
+    return Dialog(
+      insetPadding: insetPadding,
+      backgroundColor: backgroundColor,
+      shape: shape,
+      child: TextButtonTheme(
+        data: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.white,
+          ),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (title != null)
+                Padding(
+                  padding: titlePadding,
+                  child: DefaultTextStyle(
+                    style: titleTextStyle ?? defaultTitleStyle,
+                    child: title!,
+                  ),
+                ),
+              Padding(
+                padding: contentPadding,
+                child: DefaultTextStyle(
+                  style: contentTextStyle ?? defaultContentStyle,
+                  child: content,
+                ),
+              ),
+              if (actions.isNotEmpty)
+                Padding(
+                  padding: actionsPadding,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actions,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

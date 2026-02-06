@@ -53,34 +53,36 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  _t('Choose language', 'Välj språk'),
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: () {
-                    widget.appState.setLocale(const Locale('en'));
-                    Navigator.pop(sheetContext);
-                  },
-                  child: const Text('English'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    widget.appState.setLocale(const Locale('sv'));
-                    Navigator.pop(sheetContext);
-                  },
-                  child: const Text('Svenska'),
-                ),
-              ],
+          child: SocialSheetContent(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _t('Choose language', 'Välj språk'),
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: () {
+                      widget.appState.setLocale(const Locale('en'));
+                      Navigator.pop(sheetContext);
+                    },
+                    child: const Text('English'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      widget.appState.setLocale(const Locale('sv'));
+                      Navigator.pop(sheetContext);
+                    },
+                    child: const Text('Svenska'),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -152,7 +154,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           );
           return;
         }
-        Navigator.of(context).pushNamedAndRemoveUntil('/hub', (route) => false);
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/invites', (route) => false);
       }
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -175,22 +178,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final email = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
+        return SocialDialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
           backgroundColor: const Color(0xFF0F1A1A).withValues(alpha: 0.96),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: Colors.white24),
-          ),
-          titleTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-          ),
-          contentTextStyle: const TextStyle(
-            color: Colors.white70,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
           title: Text(_t('Reset password', 'Återställ lösenord')),
           content: TextField(
             controller: inputController,
