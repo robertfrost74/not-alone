@@ -21,3 +21,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+extension AppStateTranslations on AppState {
+  bool get isSv => locale.languageCode == 'sv';
+
+  String t(String en, String sv) => isSv ? sv : en;
+}

@@ -45,8 +45,7 @@ class _MeetScreenState extends State<MeetScreen> {
   double _meetingProgress = 0;
   String? _meetupId;
 
-  String _t(String en, String sv) =>
-      widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
   bool get _hasPlace => _placeName.trim().isNotEmpty;
 
   @override

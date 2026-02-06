@@ -2,12 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import '../services/invites_repository.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
 import 'request_screen.dart';
 import 'welcome_screen.dart';
+import 'edit_invite_screen.dart';
 import '../widgets/social_chrome.dart';
+import '../widgets/invite_activity_filter.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
@@ -24,11 +27,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
   RealtimeChannel? _invitesChannel;
+  final Map<String, String> _hostNamesCache = {};
+  bool _profilesLoaded = false;
+  final InvitesRepository _invitesRepository = InvitesRepository();
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   int? get _currentUserAge {
     final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
@@ -167,30 +173,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
-    final res = await Supabase.instance.client
-        .from('invites')
-        .select(
-            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(status,user_id)')
-        .match({'status': 'open'})
-        .order('created_at', ascending: false)
-        .limit(50);
-
-    var invites = (res as List).cast<Map<String, dynamic>>();
+    var invites = await _invitesRepository.fetchOpenInvites();
     if (invites.isEmpty) return invites;
 
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     if (currentUserId != null) {
-      final groupRows = await Supabase.instance.client
-          .from('group_members')
-          .select('group_id')
-          .match({'user_id': currentUserId});
-      final memberGroupIds = <String>{};
-      if (groupRows is List) {
-        for (final row in groupRows.whereType<Map<String, dynamic>>()) {
-          final id = row['group_id']?.toString();
-          if (id != null && id.isNotEmpty) memberGroupIds.add(id);
-        }
-      }
+      final memberGroupIds =
+          await _invitesRepository.fetchUserGroupIds(currentUserId);
       invites = invites.where((invite) {
         final groupId = invite['group_id']?.toString();
         if (groupId == null || groupId.isEmpty) return true;
@@ -198,22 +187,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
       }).toList();
     }
 
-    Map<String, String> hostNamesById = {};
-    try {
-      final profilesRes = await Supabase.instance.client
-          .from('profiles')
-          .select('id, username')
-          .limit(2000);
-      final profileRows = (profilesRes as List).cast<Map<String, dynamic>>();
-      for (final row in profileRows) {
-        final id = row['id']?.toString();
-        if (id == null || id.isEmpty) continue;
-        final username = (row['username'] ?? '').toString().trim();
-        final display = username.isNotEmpty ? username : '';
-        if (display.isNotEmpty) hostNamesById[id] = display;
+    if (!_profilesLoaded) {
+      try {
+        final profileNames = await _invitesRepository.fetchProfileNames();
+        _hostNamesCache.addAll(profileNames);
+        _profilesLoaded = true;
+      } catch (_) {
+        // Keep invites page resilient if profiles table/policies differ.
       }
-    } catch (_) {
-      // Keep invites page resilient if profiles table/policies differ.
     }
 
     final currentUser = Supabase.instance.client.auth.currentUser;
@@ -235,7 +216,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (currentDisplay.isNotEmpty && hostId == currentUserId) {
         invite['host_display_name'] = currentDisplay;
       } else {
-        invite['host_display_name'] = hostNamesById[hostId] ?? fallback;
+        invite['host_display_name'] = _hostNamesCache[hostId] ?? fallback;
       }
       final group = invite['groups'] as Map<String, dynamic>?;
       invite['group_name'] = (group?['name'] ?? '').toString();
@@ -328,19 +309,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
     return normalized;
   }
 
-  bool _matchesFilters(Map<String, dynamic> invite) {
-    if (_activity != 'all') {
-      final activity =
-          _normalizeActivity((invite['activity'] ?? '').toString());
-      if (activity != _normalizeActivity(_activity)) return false;
-    }
+  bool _matchesActivityFilter(Map<String, dynamic> invite) {
+    if (_activity == 'all') return true;
+    final activity =
+        _normalizeActivity((invite['activity'] ?? '').toString());
+    return activity == _normalizeActivity(_activity);
+  }
 
-    final currentUserId =
-        Supabase.instance.client.auth.currentUser?.id ?? '';
-    if (invite['host_user_id']?.toString() == currentUserId) {
-      return true;
-    }
-
+  bool _matchesAudience(Map<String, dynamic> invite) {
     final age = _currentUserAge;
     if (age != null) {
       final minRaw = invite['age_min'];
@@ -372,23 +348,50 @@ class _InvitesScreenState extends State<InvitesScreen> {
       );
       return;
     }
+    final status = _inviteStatus(invite);
+    if (!_canJoinStatus(status)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t('Invite is not joinable', 'Inbjudan går inte att ansluta till'),
+          ),
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
     setState(() {
       _joining = true;
     });
     try {
-      final inserted = await Supabase.instance.client
-          .from('invite_members')
-          .insert({
-            'invite_id': inviteId,
-            'user_id': Supabase.instance.client.auth.currentUser?.id,
-            'role': 'member',
-          })
-          .select('id')
-          .single();
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_t('Not signed in', 'Inte inloggad'))),
+        );
+        return;
+      }
 
-      final inviteMemberId = inserted['id']?.toString();
+      final existing = await Supabase.instance.client
+          .from('invite_members')
+          .select('id')
+          .match({'invite_id': inviteId, 'user_id': userId})
+          .maybeSingle();
+
+      String? inviteMemberId = existing?['id']?.toString();
+      if (inviteMemberId == null) {
+        final inserted = await Supabase.instance.client
+            .from('invite_members')
+            .insert({
+              'invite_id': inviteId,
+              'user_id': userId,
+              'role': 'member',
+            })
+            .select('id')
+            .single();
+        inviteMemberId = inserted['id']?.toString();
+      }
 
       if (!mounted) return;
       Navigator.pushNamed(
@@ -421,483 +424,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final inviteId = invite['id']?.toString();
     final hostId = invite['host_user_id']?.toString();
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (inviteId == null || inviteId.isEmpty || userId == null || hostId != userId) {
+    if (inviteId == null ||
+        inviteId.isEmpty ||
+        userId == null ||
+        hostId != userId) {
       return;
     }
 
-    String activity = _normalizeActivity((invite['activity'] ?? 'walk').toString());
-    int duration = (invite['duration'] as num?)?.toInt() ??
-        int.tryParse(invite['duration']?.toString() ?? '') ??
-        20;
-    int maxParticipants = (invite['max_participants'] as num?)?.toInt() ??
-        int.tryParse(invite['max_participants']?.toString() ?? '') ??
-        2;
-    final mode = _normalizeMode((invite['mode'] ?? '').toString());
-    final placeController = TextEditingController(text: (invite['place'] ?? '').toString());
-    DateTime meetingTime =
-        _parseDateTime(invite['meeting_time']) ?? DateTime.now().add(const Duration(minutes: 10));
-    RangeValues ageRange = RangeValues(
-      ((invite['age_min'] as num?)?.toDouble() ??
-              double.tryParse(invite['age_min']?.toString() ?? '') ??
-              16)
-          .clamp(16, 120),
-      ((invite['age_max'] as num?)?.toDouble() ??
-              double.tryParse(invite['age_max']?.toString() ?? '') ??
-              120)
-          .clamp(16, 120),
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditInviteScreen(
+          appState: widget.appState,
+          invite: invite,
+        ),
+      ),
     );
-    if (ageRange.start > ageRange.end) {
-      ageRange = RangeValues(ageRange.end, ageRange.start);
-    }
-    String targetGender =
-        _normalizeGender((invite['target_gender'] ?? 'all').toString());
-    if (targetGender != 'male' && targetGender != 'female') targetGender = 'all';
-    String? selectedGroupId = invite['group_id']?.toString();
-    final groupRow = invite['groups'] as Map<String, dynamic>?;
-    String? selectedGroupName = (groupRow?['name'] ?? '').toString();
-
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F1A1A),
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            final activityItems = [
-              DropdownMenuItem(
-                  value: 'walk',
-                  child: Text(isSv ? 'Promenad' : 'Walk')),
-              const DropdownMenuItem(value: 'coffee', child: Text('Fika')),
-              DropdownMenuItem(
-                  value: 'workout',
-                  child: Text(isSv ? 'Träna' : 'Workout')),
-              DropdownMenuItem(
-                  value: 'lunch',
-                  child: Text(isSv ? 'Luncha' : 'Lunch')),
-              DropdownMenuItem(
-                  value: 'dinner',
-                  child: Text(isSv ? 'Middag' : 'Dinner')),
-            ];
-            final activityValues =
-                activityItems.map((e) => e.value).whereType<String>();
-            if (!activityValues.contains(activity)) {
-              activityItems.add(
-                DropdownMenuItem(
-                  value: activity,
-                  child: Text(_activityLabel(activity)),
-                ),
-              );
-            }
-
-            Future<void> pickGroup() async {
-              final userId = Supabase.instance.client.auth.currentUser?.id;
-              if (userId == null) return;
-              final rows = await Supabase.instance.client
-                  .from('group_members')
-                  .select('group_id, groups ( id, name )')
-                  .match({'user_id': userId});
-              final List<_GroupOption> options = [];
-              if (rows is List) {
-                final seen = <String>{};
-                for (final row in rows.whereType<Map<String, dynamic>>()) {
-                  final group = row['groups'] as Map<String, dynamic>?;
-                  if (group == null) continue;
-                  final id = group['id']?.toString() ?? '';
-                  if (id.isEmpty || seen.contains(id)) continue;
-                  seen.add(id);
-                  options.add(
-                    _GroupOption(
-                      id: id,
-                      name: (group['name'] ?? '').toString(),
-                    ),
-                  );
-                }
-              }
-
-              String? tempSelected = selectedGroupId;
-              String? tempName = selectedGroupName;
-              final result = await showDialog<String?>(
-                context: sheetContext,
-                builder: (dialogContext) {
-                  return SocialDialog(
-                    insetPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 24),
-                    backgroundColor:
-                        const Color(0xFF0F1A1A).withValues(alpha: 0.96),
-                    title: Text(_t('Choose group', 'Välj grupp')),
-                    content: options.isEmpty
-                        ? Text(_t('No groups yet', 'Inga grupper ännu'))
-                        : Theme(
-                            data: Theme.of(dialogContext).copyWith(
-                              unselectedWidgetColor: Colors.white60,
-                              radioTheme: RadioThemeData(
-                                fillColor:
-                                    WidgetStateProperty.resolveWith<Color>(
-                                  (states) =>
-                                      states.contains(WidgetState.selected)
-                                          ? const Color(0xFF2DD4CF)
-                                          : Colors.white60,
-                                ),
-                              ),
-                            ),
-                            child: StatefulBuilder(
-                              builder: (context, setInnerState) {
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    RadioListTile<String?>(
-                                      value: null,
-                                      groupValue: tempSelected,
-                                      controlAffinity:
-                                          ListTileControlAffinity.leading,
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text(
-                                        _t('All users', 'Alla'),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      onChanged: (v) {
-                                        setInnerState(() {
-                                          tempSelected = v;
-                                          tempName = null;
-                                        });
-                                      },
-                                    ),
-                                    ...options.map(
-                                      (g) => RadioListTile<String?>(
-                                        value: g.id,
-                                        groupValue: tempSelected,
-                                        controlAffinity:
-                                            ListTileControlAffinity.leading,
-                                        contentPadding: EdgeInsets.zero,
-                                        title: Text(
-                                          g.name.isEmpty
-                                              ? _t('Unnamed group', 'Grupp utan namn')
-                                              : g.name,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        onChanged: (v) {
-                                          setInnerState(() {
-                                            tempSelected = v;
-                                            tempName = g.name;
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, null),
-                        child: Text(_t('Cancel', 'Avbryt')),
-                      ),
-                      FilledButton(
-                        onPressed: () =>
-                            Navigator.pop(dialogContext, tempSelected),
-                        child: Text(_t('Save', 'Spara')),
-                      ),
-                    ],
-                  );
-                },
-              );
-
-              if (result == null) return;
-              if (!sheetContext.mounted) return;
-              setSheetState(() {
-                selectedGroupId = result;
-                selectedGroupName = tempName;
-              });
-            }
-
-            Future<void> pickMeetingTime() async {
-              final date = await showDatePicker(
-                context: sheetContext,
-                initialDate: meetingTime,
-                firstDate: DateTime.now(),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                helpText: isSv ? 'Välj datum' : 'Pick date',
-              );
-              if (date == null) return;
-              final time = await showTimePicker(
-                context: sheetContext,
-                initialTime: TimeOfDay.fromDateTime(meetingTime),
-                helpText: isSv ? 'Välj tid' : 'Pick time',
-              );
-              if (time == null) return;
-              if (!sheetContext.mounted) return;
-              setSheetState(() {
-                meetingTime = DateTime(
-                    date.year, date.month, date.day, time.hour, time.minute);
-              });
-            }
-
-            return SafeArea(
-              child: SocialSheetContent(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    12,
-                    8,
-                    12,
-                    MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _t('Edit invite', 'Redigera inbjudan'),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _t('Activity', 'Aktivitet'),
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                        initialValue: activity,
-                        dropdownColor: const Color(0xFF10201E),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.08),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: activityItems,
-                        onChanged: (v) =>
-                            setSheetState(() => activity = v ?? activity),
-                      ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _t('Meeting place', 'Mötesplats'),
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: placeController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: _t('Enter place', 'Ange plats'),
-                            hintStyle: const TextStyle(color: Colors.white54),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.08),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '${_t('Time', 'Tid')}: ${_formatDateTime(meetingTime.toIso8601String())}',
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: pickMeetingTime,
-                            child: Text(_t('Change time', 'Ändra tid')),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '${_t('Duration', 'Längd')}: $duration min',
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                      Slider(
-                        min: 10,
-                        max: 180,
-                        divisions: 170,
-                        value: duration.toDouble().clamp(10, 180),
-                        label: '$duration',
-                        onChanged: (v) =>
-                            setSheetState(() => duration = v.round()),
-                      ),
-                        if (mode != 'one_to_one') ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            '${_t('Max participants', 'Max antal')}: $maxParticipants',
-                            style: const TextStyle(
-                                color: Colors.white, fontWeight: FontWeight.w600),
-                          ),
-                        Slider(
-                          min: 1,
-                          max: 20,
-                          divisions: 19,
-                          value: maxParticipants.toDouble().clamp(1, 20),
-                          label: '$maxParticipants',
-                          onChanged: (v) =>
-                              setSheetState(() => maxParticipants = v.round()),
-                        ),
-                        ],
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_t('Age range', 'Ålders spann')}: ${ageRange.start.round()}-${ageRange.end.round()}',
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        RangeSlider(
-                          min: 16,
-                          max: 120,
-                          divisions: 104,
-                          values: ageRange,
-                          labels: RangeLabels(
-                            '${ageRange.start.round()}',
-                            '${ageRange.end.round()}',
-                          ),
-                          onChanged: (v) => setSheetState(() => ageRange = v),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _t('Show invite for', 'Visa inbjudan för'),
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            SocialChoiceChip(
-                              label: _t('All', 'Alla'),
-                              selected: selectedGroupId == null &&
-                                  targetGender == 'all',
-                              onSelected: (_) => setSheetState(() {
-                                selectedGroupId = null;
-                                selectedGroupName = null;
-                                targetGender = 'all';
-                              }),
-                            ),
-                            SocialChoiceChip(
-                              label: _t('Men', 'Män'),
-                              selected: selectedGroupId == null &&
-                                  targetGender == 'male',
-                              onSelected: (_) => setSheetState(() {
-                                selectedGroupId = null;
-                                selectedGroupName = null;
-                                targetGender = 'male';
-                              }),
-                            ),
-                            SocialChoiceChip(
-                              label: _t('Women', 'Kvinnor'),
-                              selected: selectedGroupId == null &&
-                                  targetGender == 'female',
-                              onSelected: (_) => setSheetState(() {
-                                selectedGroupId = null;
-                                selectedGroupName = null;
-                                targetGender = 'female';
-                              }),
-                            ),
-                            SocialChoiceChip(
-                              label: _t('Group', 'Grupp'),
-                              selected: selectedGroupId != null,
-                              onSelected: (_) => pickGroup(),
-                            ),
-                          ],
-                        ),
-                        if (selectedGroupName != null &&
-                            selectedGroupName!.trim().isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(color: Colors.white24),
-                                ),
-                                child: Text(
-                                  selectedGroupName!,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _t('Group', 'Grupp'),
-                                style: const TextStyle(
-                                  color: Colors.white60,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: () => Navigator.pop(sheetContext, true),
-                            child: Text(_t('Save changes', 'Spara ändringar')),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    final updatedPlace = placeController.text.trim();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      placeController.dispose();
-    });
-    if (saved != true) return;
-
-    try {
-      await Supabase.instance.client.from('invites').update({
-        'activity': activity,
-        'place': updatedPlace,
-        'duration': duration,
-        'meeting_time': meetingTime.toIso8601String(),
-        'max_participants': mode == 'one_to_one' ? null : maxParticipants,
-        'age_min': ageRange.start.round(),
-        'age_max': ageRange.end.round(),
-        'target_gender': targetGender,
-        'group_id': selectedGroupId,
-      }).match({
-        'id': inviteId,
-        'host_user_id': userId,
-      });
-
-      if (!mounted) return;
+    if (!mounted) return;
+    if (saved == true) {
       _reloadInvites();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_t('Invite updated', 'Inbjudan uppdaterad'))),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
       );
     }
   }
@@ -992,8 +539,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final rawMax = invite['max_participants'];
     final maxParticipants =
         rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
-    final maxValue = mode == 'one_to_one' ? 1 : (maxParticipants ?? 0);
-    return '$accepted/$maxValue';
+    final maxValue = mode == 'one_to_one' ? 1 : maxParticipants;
+    return maxValue == null ? '$accepted/-' : '$accepted/$maxValue';
   }
 
   String _formatDateTime(dynamic raw) {
@@ -1280,11 +827,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           final allItems = snap.data ?? [];
                           final currentUserId =
                               Supabase.instance.client.auth.currentUser?.id ?? '';
-                          final filtered =
-                              allItems.where(_matchesFilters).toList();
+                          final activityFiltered =
+                              allItems.where(_matchesActivityFilter).toList();
                           final hasAnyInvites = allItems.isNotEmpty;
 
-                          final joinedInvites = filtered.where((it) {
+                          final joinedInvites = activityFiltered.where((it) {
                             final members =
                                 (it['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
                                     const [];
@@ -1293,7 +840,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                 m['status']?.toString() != 'cannot_attend');
                           }).toList();
 
-                          final myInvites = filtered
+                          final myInvites = activityFiltered
                               .where((it) =>
                                   it['host_user_id']?.toString() ==
                                   currentUserId)
@@ -1302,19 +849,23 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           final joinedInviteIds =
                               joinedInvites.map((it) => it['id']?.toString()).toSet();
 
-                          final invitesForMe = filtered.where((it) {
+                          final invitesForMe = activityFiltered.where((it) {
                             final hostId = it['host_user_id']?.toString();
                             if (hostId == currentUserId) return false;
                             final id = it['id']?.toString();
                             if (id != null && joinedInviteIds.contains(id)) return false;
                             final groupId = it['group_id']?.toString();
                             if (groupId != null && groupId.isNotEmpty) return false;
-                            return true;
+                            return _matchesAudience(it);
                           }).toList();
 
-                          final groupInvites = filtered.where((it) {
+                          final groupInvites = activityFiltered.where((it) {
                             final groupId = it['group_id']?.toString();
-                            return groupId != null && groupId.isNotEmpty;
+                            if (groupId == null || groupId.isEmpty) return false;
+                            if (it['host_user_id']?.toString() == currentUserId) {
+                              return true;
+                            }
+                            return _matchesAudience(it);
                           }).toList();
 
                           Widget buildList(List<Map<String, dynamic>> items) {
@@ -1563,6 +1114,37 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                           ],
                                         ),
                                       ],
+                                      if (_normalizeGender(
+                                                  (it['target_gender'] ?? 'all')
+                                                      .toString()) !=
+                                              'all') ...[
+                                        const SizedBox(height: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(
+                                                alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            border: Border.all(
+                                                color: Colors.white24),
+                                          ),
+                                          child: Text(
+                                            _normalizeGender((it['target_gender'] ??
+                                                        'all')
+                                                    .toString()) ==
+                                                'male'
+                                                ? _t('Men', 'Män')
+                                                : _t('Women', 'Kvinnor'),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 20),
                                       SizedBox(
                                         width: double.infinity,
@@ -1599,95 +1181,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _activity,
-                                  decoration: InputDecoration(
-                                    filled: true,
-                                    fillColor: Colors.white.withValues(alpha: 0.08),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(color: Colors.white24),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide:
-                                          const BorderSide(color: Color(0xFF2DD4CF)),
-                                    ),
-                                  ),
-                                  dropdownColor: const Color(0xFF10201E),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  items: [
-                                    DropdownMenuItem(
-                                      value: 'all',
-                                      child: Text(
-                                        isSv ? 'Alla' : 'All',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'walk',
-                                      child: Text(
-                                        isSv ? 'Promenad' : 'Walk',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'workout',
-                                      child: Text(
-                                        isSv ? 'Träna' : 'Workout',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    const DropdownMenuItem(
-                                      value: 'coffee',
-                                      child: Text(
-                                        'Fika',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'lunch',
-                                      child: Text(
-                                        isSv ? 'Luncha' : 'Lunch',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'dinner',
-                                      child: Text(
-                                        isSv ? 'Middag' : 'Dinner',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                InviteActivityFilter(
+                                  isSv: isSv,
+                                  value: _activity,
                                   onChanged: (v) {
                                     setState(() {
                                       _activity = v ?? 'all';
@@ -1720,14 +1216,4 @@ class _InvitesScreenState extends State<InvitesScreen> {
       ),
     );
   }
-}
-
-class _GroupOption {
-  final String id;
-  final String name;
-
-  const _GroupOption({
-    required this.id,
-    required this.name,
-  });
 }

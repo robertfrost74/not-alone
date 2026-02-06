@@ -16,8 +16,10 @@ Future<void> main() async {
   const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
-  debugPrint('SUPABASE_URL=$supabaseUrl');
-  debugPrint('SUPABASE_ANON_KEY length=${supabaseAnonKey.length}');
+  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    runApp(const _SupabaseConfigErrorApp());
+    return;
+  }
 
   await Supabase.initialize(
     url: supabaseUrl,
@@ -36,6 +38,12 @@ class NotAloneApp extends StatefulWidget {
 
 class _NotAloneAppState extends State<NotAloneApp> {
   final _appState = AppState();
+
+  @override
+  void dispose() {
+    _appState.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +164,35 @@ class _NotAloneAppState extends State<NotAloneApp> {
           },
         );
       },
+    );
+  }
+}
+
+class _SupabaseConfigErrorApp extends StatelessWidget {
+  const _SupabaseConfigErrorApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Color(0xFF0E1D1C),
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Missing SUPABASE_URL or SUPABASE_ANON_KEY.\n'
+              'Set them with --dart-define and restart.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

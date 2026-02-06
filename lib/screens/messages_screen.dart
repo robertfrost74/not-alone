@@ -24,8 +24,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
   RealtimeChannel? _dmRecv;
   RealtimeChannel? _groupChannel;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void initState() {
@@ -103,12 +103,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .match({'recipient_id': user.id});
 
     final all = <Map<String, dynamic>>[];
-    if (sent is List) {
-      all.addAll(sent.whereType<Map<String, dynamic>>());
-    }
-    if (received is List) {
-      all.addAll(received.whereType<Map<String, dynamic>>());
-    }
+    all.addAll(sent.whereType<Map<String, dynamic>>());
+    all.addAll(received.whereType<Map<String, dynamic>>());
 
     all.sort((a, b) {
       final ad = DateTime.tryParse((a['created_at'] ?? '').toString());
@@ -134,9 +130,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .from('group_members')
         .select('group_id, groups ( id, name )')
         .match({'user_id': user.id});
-    final groups = groupRows is List
-        ? groupRows.whereType<Map<String, dynamic>>().toList()
-        : <Map<String, dynamic>>[];
+    final groups = groupRows.whereType<Map<String, dynamic>>().toList();
 
     final groupIds = groups
         .map((row) => row['group_id']?.toString() ?? '')
@@ -150,13 +144,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
           .select('group_id, body, sender_name, created_at')
           .inFilter('group_id', groupIds)
           .order('created_at', ascending: false);
-      if (gRows is List) {
-        for (final row in gRows.whereType<Map<String, dynamic>>()) {
-          final gid = (row['group_id'] ?? '').toString();
-          if (gid.isEmpty) continue;
-          if (!latestByGroup.containsKey(gid)) {
-            latestByGroup[gid] = row;
-          }
+      for (final row in gRows.whereType<Map<String, dynamic>>()) {
+        final gid = (row['group_id'] ?? '').toString();
+        if (gid.isEmpty) continue;
+        if (!latestByGroup.containsKey(gid)) {
+          latestByGroup[gid] = row;
         }
       }
     }
@@ -180,9 +172,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final body = (item['body'] ?? '').toString();
     final created = (item['created_at'] ?? '').toString();
     final sender = (item['sender_id'] ?? '').toString();
-    final recipient = (item['recipient_id'] ?? '').toString();
     final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-    final otherId = sender == userId ? recipient : sender;
     final otherName = sender == userId
         ? (item['recipient_name'] ?? '').toString()
         : (item['sender_name'] ?? '').toString();

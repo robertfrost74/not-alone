@@ -15,7 +15,7 @@ class EnergyScreen extends StatefulWidget {
 class _EnergyScreenState extends State<EnergyScreen> {
   bool _loading = false;
 
-  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   Future<void> _saveEnergyAndContinue(String energy) async {
     final isSv = widget.appState.locale.languageCode == 'sv';

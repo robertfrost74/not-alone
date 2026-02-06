@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
+import '../services/groups_repository.dart';
 import '../widgets/social_chrome.dart';
 import 'create_group_screen.dart';
 import 'group_chat_screen.dart';
@@ -45,9 +46,10 @@ class _GroupsScreenState extends State<GroupsScreen> {
   final List<GroupCard> _pendingInvites = [];
   bool _loading = true;
   RealtimeChannel? _channel;
+  final GroupsRepository _groupsRepository = GroupsRepository();
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void initState() {
@@ -89,13 +91,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Future<int> _memberCount(String groupId) async {
-    final supabase = Supabase.instance.client;
-    final rows = await supabase
-        .from('group_members')
-        .select('id')
-        .match({'group_id': groupId});
-    if (rows is List) return rows.length;
-    return 0;
+    return _groupsRepository.fetchMemberCount(groupId);
   }
 
   Future<List<GroupCard>> _loadGroups() async {
@@ -103,12 +99,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     final user = supabase.auth.currentUser;
     if (user == null) return [];
 
-    final rows = await supabase
-        .from('group_members')
-        .select('group_id, role, groups ( id, name, description, owner_id )')
-        .match({'user_id': user.id});
-
-    if (rows is! List) return [];
+    final rows = await _groupsRepository.fetchUserGroupRows(user.id);
 
     final groupEntries = rows
         .whereType<Map<String, dynamic>>()
@@ -158,22 +149,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
     final List<Map<String, dynamic>> inviteRows = [];
     if (email.isNotEmpty) {
-      final rows = await supabase
-          .from('group_invites')
-          .select('id, group_id, identifier, groups ( id, name, description, owner_id )')
-          .match({'identifier': email});
-      if (rows is List) {
-        inviteRows.addAll(rows.whereType<Map<String, dynamic>>());
-      }
+      final rows =
+          await _groupsRepository.fetchGroupInvitesByIdentifier(email);
+      inviteRows.addAll(rows);
     }
     if (username.isNotEmpty) {
-      final rows = await supabase
-          .from('group_invites')
-          .select('id, group_id, identifier, groups ( id, name, description, owner_id )')
-          .match({'identifier': username});
-      if (rows is List) {
-        inviteRows.addAll(rows.whereType<Map<String, dynamic>>());
-      }
+      final rows =
+          await _groupsRepository.fetchGroupInvitesByIdentifier(username);
+      inviteRows.addAll(rows);
     }
 
     final seen = <String>{};
@@ -402,21 +385,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   Future<void> _showMembers(GroupCard group) async {
-    final supabase = Supabase.instance.client;
-    final rows = await supabase
-        .from('group_members')
-        .select('user_id, display_name')
-        .match({'group_id': group.id});
-    final members = rows is List
-        ? rows
-            .whereType<Map<String, dynamic>>()
-            .map((m) => {
-                  'user_id': (m['user_id'] ?? '').toString(),
-                  'display_name': (m['display_name'] ?? '').toString().trim(),
-                })
-            .where((m) => (m['user_id'] ?? '').toString().isNotEmpty)
-            .toList()
-        : <Map<String, dynamic>>[];
+    final rows = await _groupsRepository.fetchGroupMembers(group.id);
+    final members = rows
+        .map((m) => {
+              'user_id': (m['user_id'] ?? '').toString(),
+              'display_name': (m['display_name'] ?? '').toString().trim(),
+            })
+        .where((m) => (m['user_id'] ?? '').toString().isNotEmpty)
+        .toList();
 
     if (!mounted) return;
     await showDialog<void>(
@@ -496,21 +472,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null || userId.isEmpty) return;
 
-    final profileRows =
-        await supabase.from('profiles').select().match({'id': userId});
-    final profile = (profileRows is List && profileRows.isNotEmpty)
-        ? profileRows.first as Map<String, dynamic>
-        : <String, dynamic>{};
+    final profile = await _groupsRepository.fetchProfile(userId);
 
     final age = profile['age']?.toString() ?? '';
     final gender = profile['gender']?.toString() ?? '';
     final bio = profile['bio']?.toString() ?? '';
 
-    final blockedRows = await supabase
-        .from('user_blocks')
-        .select('id')
-        .match({'blocker_id': currentUser.id, 'blocked_id': userId});
-    final isBlocked = blockedRows is List && blockedRows.isNotEmpty;
+    final isBlocked = await _groupsRepository.isBlocked(
+      blockerId: currentUser.id,
+      blockedId: userId,
+    );
 
     if (!mounted) return;
     await showDialog<void>(
@@ -605,7 +576,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
                             'blocked_id': userId,
                           });
                         }
-                        if (mounted) Navigator.pop(context);
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
                       },
                       child: Text(
                         isBlocked ? _t('Unblock', 'Avblockera') : _t('Block', 'Blockera'),

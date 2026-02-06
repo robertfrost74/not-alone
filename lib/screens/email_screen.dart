@@ -13,7 +13,7 @@ class EmailScreen extends StatefulWidget {
 class _EmailScreenState extends State<EmailScreen> {
   bool _loading = false;
 
-  String _t(String en, String sv) => widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   Future<void> _devLoginAnonymous() async {
     setState(() => _loading = true);

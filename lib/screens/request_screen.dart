@@ -42,8 +42,7 @@ class _RequestScreenState extends State<RequestScreen> {
     super.dispose();
   }
 
-  String _t(String en, String sv) =>
-      widget.appState.locale.languageCode == 'sv' ? sv : en;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   String _activityLabel(String activity) {
     switch (activity) {
@@ -147,10 +146,6 @@ class _RequestScreenState extends State<RequestScreen> {
           .from('group_members')
           .select('group_id, groups ( id, name )')
           .match({'user_id': userId});
-      if (rows is! List) {
-        _groups = const [];
-        return;
-      }
       final seen = <String>{};
       final items = <_GroupOption>[];
       for (final row in rows.whereType<Map<String, dynamic>>()) {
@@ -219,74 +214,88 @@ class _RequestScreenState extends State<RequestScreen> {
                           child: ListTileTheme(
                             textColor: Colors.white,
                             iconColor: Colors.white70,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ..._groups.map(
-                                  (g) => RadioListTile<String?>(
-                                    value: g.id,
-                                    groupValue: tempSelected,
-                                    controlAffinity: ListTileControlAffinity.leading,
-                                    contentPadding: EdgeInsets.zero,
-                                    activeColor: const Color(0xFF2DD4CF),
-                                    title: Text(
-                                      g.name.isEmpty
-                                          ? _t('Unnamed group', 'Grupp utan namn')
-                                          : g.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    onChanged: (v) {
-                                      setInnerState(() {
-                                        tempSelected = v;
-                                        tempName = g.name;
-                                        showError = false;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    if (showError)
-                                      Text(
-                                        _t(
-                                          'Pick a group first',
-                                          'Välj grupp först',
-                                        ),
+                            child: RadioGroup<String?>(
+                              groupValue: tempSelected,
+                              onChanged: (v) {
+                                setInnerState(() {
+                                  tempSelected = v;
+                                  if (v == null) {
+                                    tempName = null;
+                                  } else {
+                                    final selected = _groups.firstWhere(
+                                      (g) => g.id == v,
+                                      orElse: () =>
+                                          const _GroupOption(id: '', name: ''),
+                                    );
+                                    tempName = selected.name;
+                                  }
+                                  showError = false;
+                                });
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ..._groups.map(
+                                    (g) => RadioListTile<String?>(
+                                      value: g.id,
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      contentPadding: EdgeInsets.zero,
+                                      activeColor: const Color(0xFF2DD4CF),
+                                      title: Text(
+                                        g.name.isEmpty
+                                            ? _t('Unnamed group', 'Grupp utan namn')
+                                            : g.name,
                                         style: const TextStyle(
-                                          color: Colors.redAccent,
+                                          color: Colors.white,
                                           fontWeight: FontWeight.w600,
-                                          fontSize: 12,
                                         ),
                                       ),
-                                    const Spacer(),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(dialogContext, null),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      if (showError)
+                                        Text(
+                                          _t(
+                                            'Pick a group first',
+                                            'Välj grupp först',
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.redAccent,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      const Spacer(),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext, null),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: Text(_t('Cancel', 'Avbryt')),
                                       ),
-                                      child: Text(_t('Cancel', 'Avbryt')),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    FilledButton(
-                                      onPressed: () {
-                                        if (tempSelected == null) {
-                                          setInnerState(() => showError = true);
-                                          return;
-                                        }
-                                        Navigator.pop(dialogContext, tempSelected);
-                                      },
-                                      child: Text(_t('Save', 'Spara')),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                              ],
+                                      const SizedBox(width: 12),
+                                      FilledButton(
+                                        onPressed: () {
+                                          if (tempSelected == null) {
+                                            setInnerState(
+                                                () => showError = true);
+                                            return;
+                                          }
+                                          Navigator.pop(
+                                              dialogContext, tempSelected);
+                                        },
+                                        child: Text(_t('Save', 'Spara')),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -558,9 +567,6 @@ class _RequestScreenState extends State<RequestScreen> {
     final isSv = widget.appState.locale.languageCode == 'sv';
     final customLabel =
         _customActivity.trim().isEmpty ? _t('Other', 'Annat') : _customActivity.trim();
-    final activityValue =
-        _activity == 'custom' ? _customActivity.trim() : _activity;
-    final hasPlace = _invitePlaceController.text.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.transparent,

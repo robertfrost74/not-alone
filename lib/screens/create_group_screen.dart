@@ -19,8 +19,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _descController = TextEditingController();
   bool _saving = false;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void dispose() {

@@ -27,8 +27,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _sending = false;
   RealtimeChannel? _channel;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void initState() {
@@ -74,7 +74,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     setState(() {
       _messages
         ..clear()
-        ..addAll(rows is List ? rows.whereType<Map<String, dynamic>>() : []);
+        ..addAll(rows.whereType<Map<String, dynamic>>());
       _loading = false;
     });
   }
@@ -126,7 +126,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final dt = DateTime.tryParse(value);
     if (dt == null) return value;
     final local = dt.toLocal();
-    final two = (int v) => v.toString().padLeft(2, '0');
+    String two(int v) => v.toString().padLeft(2, '0');
     return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
   }
 

@@ -26,8 +26,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _avatarPresetId = '';
   bool _saving = false;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   String _fixMojibake(String value) {
     return value

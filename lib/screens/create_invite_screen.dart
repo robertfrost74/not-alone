@@ -23,8 +23,8 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
   late TextEditingController _placeController;
   bool _saving = false;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void initState() {

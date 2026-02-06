@@ -24,8 +24,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   bool _obscurePassword = true;
   bool _isSignUp = false;
 
-  bool get _isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => _isSv ? sv : en;
+  bool get _isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   void _normalizeEmailController(TextEditingController controller) {
     final text = controller.text;
@@ -331,7 +331,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     style: GoogleFonts.oleoScript(
                       fontSize: 68,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF22D3EE),
+                      color: const Color(0xFF22D3EE),
                       letterSpacing: -0.6,
                     ),
                   ),

@@ -28,8 +28,8 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   RealtimeChannel? _channelSent;
   RealtimeChannel? _channelReceived;
 
-  bool get isSv => widget.appState.locale.languageCode == 'sv';
-  String _t(String en, String sv) => isSv ? sv : en;
+  bool get isSv => widget.appState.isSv;
+  String _t(String en, String sv) => widget.appState.t(en, sv);
 
   @override
   void initState() {
@@ -99,12 +99,8 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         .match({'recipient_id': user.id});
 
     final all = <Map<String, dynamic>>[];
-    if (sent is List) {
-      all.addAll(sent.whereType<Map<String, dynamic>>());
-    }
-    if (received is List) {
-      all.addAll(received.whereType<Map<String, dynamic>>());
-    }
+    all.addAll(sent.whereType<Map<String, dynamic>>());
+    all.addAll(received.whereType<Map<String, dynamic>>());
 
     final filtered = all.where((m) {
       final sender = (m['sender_id'] ?? '').toString();
@@ -147,12 +143,12 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         .from('user_blocks')
         .select('id')
         .match({'blocker_id': other, 'blocked_id': me});
-    if (blockedByOther is List && blockedByOther.isNotEmpty) return true;
+    if (blockedByOther.isNotEmpty) return true;
     final blockedByMe = await supabase
         .from('user_blocks')
         .select('id')
         .match({'blocker_id': me, 'blocked_id': other});
-    if (blockedByMe is List && blockedByMe.isNotEmpty) return true;
+    if (blockedByMe.isNotEmpty) return true;
     return false;
   }
 
@@ -209,7 +205,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     final dt = DateTime.tryParse(value);
     if (dt == null) return value;
     final local = dt.toLocal();
-    final two = (int v) => v.toString().padLeft(2, '0');
+    String two(int v) => v.toString().padLeft(2, '0');
     return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
   }
 
