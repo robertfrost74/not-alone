@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import '../services/invites_repository.dart';
+import '../services/invite_status.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -11,6 +12,7 @@ import 'welcome_screen.dart';
 import 'edit_invite_screen.dart';
 import '../widgets/social_chrome.dart';
 import '../widgets/invite_activity_filter.dart';
+import '../widgets/invite_card.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
@@ -585,67 +587,58 @@ class _InvitesScreenState extends State<InvitesScreen> {
     return isSv ? '${diff.inMinutes} min kvar' : '${diff.inMinutes} min left';
   }
 
-  String _inviteStatus(Map<String, dynamic> invite) {
+  InviteStatus _inviteStatus(Map<String, dynamic> invite) {
     final meetingAt = _parseDateTime(invite['meeting_time']);
     final accepted = (invite['accepted_count'] as int?) ?? 0;
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
     final maxParticipants =
         rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
-    final now = DateTime.now();
-
-    if (meetingAt != null) {
-      final expiredAt = meetingAt.add(const Duration(minutes: 15));
-      if (now.isAfter(expiredAt)) return 'expired';
-      if (now.isAfter(meetingAt)) return 'started';
-    }
-
-    final isFull = mode == 'one_to_one'
-        ? accepted >= 1
-        : maxParticipants != null
-            ? accepted >= maxParticipants
-            : accepted >= 4;
-    if (isFull) return 'full';
-    return 'open';
+    return computeInviteStatus(
+      meetingAt: meetingAt,
+      accepted: accepted,
+      mode: mode,
+      maxParticipants: maxParticipants,
+    );
   }
 
-  String _statusLabel(String status) {
+  String _statusLabel(InviteStatus status) {
     switch (status) {
-      case 'full':
+      case InviteStatus.full:
         return isSv ? 'Full' : 'Full';
-      case 'started':
+      case InviteStatus.started:
         return isSv ? 'Startad' : 'Started';
-      case 'expired':
+      case InviteStatus.expired:
         return isSv ? 'Utgången' : 'Expired';
-      default:
+      case InviteStatus.open:
         return isSv ? 'Öppen' : 'Open';
     }
   }
 
-  Color _statusColor(String status) {
+  Color _statusColor(InviteStatus status) {
     switch (status) {
-      case 'full':
+      case InviteStatus.full:
         return Colors.red.shade400;
-      case 'started':
+      case InviteStatus.started:
         return Colors.blue.shade100;
-      case 'expired':
+      case InviteStatus.expired:
         return Colors.red.shade100;
-      default:
+      case InviteStatus.open:
         return Colors.green.shade100;
     }
   }
 
-  bool _canJoinStatus(String status) => status == 'open';
+  bool _canJoinStatus(InviteStatus status) => status == InviteStatus.open;
 
-  String _joinButtonLabel(String status) {
+  String _joinButtonLabel(InviteStatus status) {
     switch (status) {
-      case 'full':
+      case InviteStatus.full:
         return isSv ? 'Full' : 'Full';
-      case 'started':
+      case InviteStatus.started:
         return isSv ? 'Startad' : 'Started';
-      case 'expired':
+      case InviteStatus.expired:
         return isSv ? 'Utgången' : 'Expired';
-      default:
+      case InviteStatus.open:
         return isSv ? 'Gå med' : 'Join';
     }
   }
@@ -892,276 +885,59 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                 final status = _inviteStatus(it);
                                 final canDelete = it['host_user_id']?.toString() ==
                                     Supabase.instance.client.auth.currentUser?.id;
+                                final groupName =
+                                    (it['group_name'] ?? '').toString().trim();
+                                final genderNormalized = _normalizeGender(
+                                    (it['target_gender'] ?? 'all').toString());
 
-                                return Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.white24),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  _activityLabel(it['activity']),
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 18,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  (it['host_display_name'] ?? '')
-                                                      .toString(),
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 13,
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          TextButton(
-                                            style: TextButton.styleFrom(
-                                              backgroundColor: Colors.white24,
-                                              foregroundColor: Colors.white,
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 10),
-                                              minimumSize: const Size(0, 28),
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize.shrinkWrap,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                              ),
-                                            ),
-                                            onPressed: () =>
-                                                _showAcceptedUsersModal(it),
-                                            child: Text(
-                                              _joinedOfMaxLabel(it),
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            constraints:
-                                                const BoxConstraints(minHeight: 28),
-                                            alignment: Alignment.center,
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 10),
-                                            decoration: BoxDecoration(
-                                              color: _statusColor(status),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                            ),
-                                            child: Text(
-                                              _statusLabel(status),
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                                color: status == 'full'
-                                                    ? Colors.white
-                                                    : Colors.black,
-                                              ),
-                                            ),
-                                          ),
-                                          if (canDelete) ...[
-                                            const SizedBox(width: 10),
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                GestureDetector(
-                                                  onTap: () => _editInvite(it),
-                                                  child: const SizedBox(
-                                                    width: 24,
-                                                    height: 24,
-                                                    child: Icon(Icons.edit_outlined,
-                                                        size: 22),
-                                                  ),
-                                                ),
-                                                GestureDetector(
-                                                  onTap: () => _deleteInvite(it),
-                                                  child: const SizedBox(
-                                                    width: 24,
-                                                    height: 24,
-                                                    child: Icon(Icons.delete_outline,
-                                                        size: 22),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              _countLabel(it),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            '${it['duration']} min',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        isSv
-                                            ? 'Tid: $meetingTimeLabel'
-                                            : 'Time: $meetingTimeLabel',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(999),
-                                        child: LinearProgressIndicator(
-                                          value: timeProgress,
-                                          minHeight: 7,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        timeLeftLabel,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      if (place.isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          isSv
-                                              ? 'Mötesplats: $place'
-                                              : 'Meeting place: $place',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                      if ((it['group_name'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 10, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withValues(
-                                                    alpha: 0.12),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                                border: Border.all(
-                                                    color: Colors.white24),
-                                              ),
-                                              child: Text(
-                                                (it['group_name'] ?? '')
-                                                    .toString(),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              isSv ? 'Grupp' : 'Group',
-                                              style: const TextStyle(
-                                                color: Colors.white60,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                      if (_normalizeGender(
-                                                  (it['target_gender'] ?? 'all')
-                                                      .toString()) !=
-                                              'all') ...[
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withValues(
-                                                alpha: 0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                            border: Border.all(
-                                                color: Colors.white24),
-                                          ),
-                                          child: Text(
-                                            _normalizeGender((it['target_gender'] ??
-                                                        'all')
-                                                    .toString()) ==
-                                                'male'
-                                                ? _t('Men', 'Män')
-                                                : _t('Women', 'Kvinnor'),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 20),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        height: 44,
-                                        child: OutlinedButton(
-                                          onPressed:
-                                              _joining || !_canJoinStatus(status)
-                                                  ? null
-                                                  : () => _joinInvite(it),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.white,
-                                          ),
-                                          child: Text(_joinButtonLabel(status)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                final placeLine = place.isEmpty
+                                    ? null
+                                    : isSv
+                                        ? 'Mötesplats: $place'
+                                        : 'Meeting place: $place';
+                                final groupLabel = groupName.isEmpty
+                                    ? null
+                                    : isSv
+                                        ? 'Grupp'
+                                        : 'Group';
+                                final genderTag = genderNormalized == 'all'
+                                    ? null
+                                    : genderNormalized == 'male'
+                                        ? _t('Men', 'Män')
+                                        : _t('Women', 'Kvinnor');
+
+                                return InviteCard(
+                                  activityLabel: _activityLabel(it['activity']),
+                                  hostDisplayName:
+                                      (it['host_display_name'] ?? '').toString(),
+                                  joinedLabel: _joinedOfMaxLabel(it),
+                                  statusLabel: _statusLabel(status),
+                                  statusColor: _statusColor(status),
+                                  statusTextColor: status == InviteStatus.full
+                                      ? Colors.white
+                                      : Colors.black,
+                                  canEdit: canDelete,
+                                  onEdit: () => _editInvite(it),
+                                  onDelete: () => _deleteInvite(it),
+                                  countLabel: _countLabel(it),
+                                  durationMinutes:
+                                      int.tryParse(it['duration'].toString()) ??
+                                          0,
+                                  timeLine: isSv
+                                      ? 'Tid: $meetingTimeLabel'
+                                      : 'Time: $meetingTimeLabel',
+                                  timeProgress: timeProgress,
+                                  timeLeftLabel: timeLeftLabel,
+                                  placeLine: placeLine,
+                                  groupName: groupName.isEmpty ? null : groupName,
+                                  groupLabel: groupLabel,
+                                  genderTag: genderTag,
+                                  joinEnabled:
+                                      !_joining && _canJoinStatus(status),
+                                  joinButtonLabel: _joinButtonLabel(status),
+                                  onJoin: () => _joinInvite(it),
+                                  onShowJoined: () =>
+                                      _showAcceptedUsersModal(it),
                                 );
                               },
                             );
