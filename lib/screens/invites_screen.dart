@@ -144,12 +144,19 @@ class _InvitesScreenState extends State<InvitesScreen> {
         .toString()
         .trim();
     if (widget.appState.city == null && metadataCity.isNotEmpty) {
-      widget.appState.setCity(metadataCity);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.appState.setCity(metadataCity);
+      });
     }
 
     final position = await LocationService().getPosition(allowPrompt: false);
     if (!mounted || position == null) return;
-    widget.appState.setLocation(lat: position.latitude, lon: position.longitude);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.appState
+          .setLocation(lat: position.latitude, lon: position.longitude);
+    });
     _reloadInvites();
   }
 
