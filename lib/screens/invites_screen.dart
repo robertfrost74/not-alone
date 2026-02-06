@@ -37,7 +37,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
   DateTime? _profilesLoadedAt;
   bool _offline = false;
   bool _loadingInvites = false;
+  bool _realtimeFailed = false;
+  DateTime? _lastJoinAttemptAt;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
+  static const Duration _joinCooldown = Duration(seconds: 2);
   final InvitesRepository _invitesRepository = InvitesRepository();
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
@@ -102,21 +105,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   void _startRealtime() {
-    _invitesChannel = Supabase.instance.client
-        .channel('public:invites_live')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'invites',
-          callback: (_) => _scheduleRealtimeReload(),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'invite_members',
-          callback: (_) => _scheduleRealtimeReload(),
-        )
-        .subscribe();
+    try {
+      _invitesChannel = Supabase.instance.client
+          .channel('public:invites_live')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'invites',
+            callback: (_) => _scheduleRealtimeReload(),
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'invite_members',
+            callback: (_) => _scheduleRealtimeReload(),
+          )
+          .subscribe();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _realtimeFailed = true);
+      }
+    }
   }
 
   void _scheduleRealtimeReload() {
@@ -370,6 +379,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
+    if (_isJoinCooldownActive) return;
+    _lastJoinAttemptAt = DateTime.now();
     final inviteId = invite['id']?.toString();
     if (inviteId == null || inviteId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -649,6 +660,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   bool _canJoinStatus(InviteStatus status) => status == InviteStatus.open;
+  bool get _isJoinCooldownActive =>
+      _lastJoinAttemptAt != null &&
+      DateTime.now().difference(_lastJoinAttemptAt!) < _joinCooldown;
 
   String _joinButtonLabel(InviteStatus status) {
     switch (status) {
@@ -712,7 +726,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       groupName: groupName.isEmpty ? null : groupName,
       groupLabel: groupLabel,
       genderTag: genderTag,
-      joinEnabled: !_joining && _canJoinStatus(status),
+      joinEnabled: !_joining && _canJoinStatus(status) && !_isJoinCooldownActive,
       joinButtonLabel: _joinButtonLabel(status),
       onJoin: () => _joinInvite(it),
       onShowJoined: () => _showAcceptedUsersModal(it),
@@ -877,7 +891,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                         child: Text(_t('Create invite', 'Skapa inbjudan')),
                       ),
                     ),
-                    if (_offline) ...[
+                    if (_offline || _realtimeFailed) ...[
                       const SizedBox(height: 10),
                       Container(
                         width: double.infinity,
@@ -888,8 +902,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           border: Border.all(color: Colors.redAccent),
                         ),
                         child: Text(
-                          _t('Offline. Trying to reconnect…',
-                              'Offline. Försöker ansluta…'),
+                          _offline
+                              ? _t('Offline. Trying to reconnect…',
+                                  'Offline. Försöker ansluta…')
+                              : _t('Live updates unavailable',
+                                  'Live-uppdatering avstängd'),
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,

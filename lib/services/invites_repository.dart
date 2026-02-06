@@ -4,25 +4,29 @@ import 'error_mapper.dart';
 import 'retry.dart';
 
 class InvitesRepository {
-  final SupabaseClient _client;
+  final SupabaseClient? _clientOverride;
 
-  InvitesRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  InvitesRepository({SupabaseClient? client}) : _clientOverride = client;
+
+  SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
 
   Future<List<Map<String, dynamic>>> fetchOpenInvites({int limit = 50}) async {
     return withRetry(
-      () async {
-        final res = await _client
-            .from('invites')
-            .select(
-                'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(status,user_id)')
-            .match({'status': 'open'})
-            .order('created_at', ascending: false)
-            .limit(limit);
-        return (res as List).cast<Map<String, dynamic>>();
-      },
+      () => fetchOpenInvitesRaw(limit: limit),
       shouldRetry: isNetworkError,
     );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchOpenInvitesRaw(
+      {int limit = 50}) async {
+    final res = await _client
+        .from('invites')
+        .select(
+            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(status,user_id)')
+        .match({'status': 'open'})
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return (res as List).cast<Map<String, dynamic>>();
   }
 
   Future<Set<String>> fetchUserGroupIds(String userId) async {

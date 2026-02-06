@@ -280,10 +280,10 @@ class _MeetScreenState extends State<MeetScreen> {
     if (inviteMemberId == null || inviteMemberId.isEmpty) return;
 
     try {
-      await Supabase.instance.client.from('invite_members').update({
-        'status': 'cannot_attend',
-        'cannot_come_at': DateTime.now().toIso8601String(),
-      }).match({'id': inviteMemberId});
+      await Supabase.instance.client.rpc(
+        'leave_invite',
+        params: {'invite_member_id': inviteMemberId},
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
