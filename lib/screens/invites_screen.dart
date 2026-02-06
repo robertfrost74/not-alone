@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import '../services/invites_repository.dart';
 import '../services/invite_status.dart';
+import '../services/error_mapper.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -13,6 +14,7 @@ import 'edit_invite_screen.dart';
 import '../widgets/social_chrome.dart';
 import '../widgets/invite_activity_filter.dart';
 import '../widgets/invite_card.dart';
+import '../widgets/invite_list.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
@@ -410,8 +412,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final message = mapSupabaseError(
+        e,
+        isSv: isSv,
+        fallbackEn: 'Could not join invite',
+        fallbackSv: 'Kunde inte gå med i inbjudan',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) {
@@ -643,6 +651,62 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  Widget _buildInviteCard(BuildContext context, Map<String, dynamic> it) {
+    final place = (it['place'] ?? '').toString();
+    final meetingTimeLabel = _formatDateTime(it['meeting_time']);
+    final timeProgress =
+        _timeLeftProgress(it['created_at'], it['meeting_time']);
+    final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
+    final status = _inviteStatus(it);
+    final canDelete = it['host_user_id']?.toString() ==
+        Supabase.instance.client.auth.currentUser?.id;
+    final groupName = (it['group_name'] ?? '').toString().trim();
+    final genderNormalized =
+        _normalizeGender((it['target_gender'] ?? 'all').toString());
+
+    final placeLine = place.isEmpty
+        ? null
+        : isSv
+            ? 'Mötesplats: $place'
+            : 'Meeting place: $place';
+    final groupLabel = groupName.isEmpty
+        ? null
+        : isSv
+            ? 'Grupp'
+            : 'Group';
+    final genderTag = genderNormalized == 'all'
+        ? null
+        : genderNormalized == 'male'
+            ? _t('Men', 'Män')
+            : _t('Women', 'Kvinnor');
+
+    return InviteCard(
+      activityLabel: _activityLabel(it['activity']),
+      hostDisplayName: (it['host_display_name'] ?? '').toString(),
+      joinedLabel: _joinedOfMaxLabel(it),
+      statusLabel: _statusLabel(status),
+      statusColor: _statusColor(status),
+      statusTextColor:
+          status == InviteStatus.full ? Colors.white : Colors.black,
+      canEdit: canDelete,
+      onEdit: () => _editInvite(it),
+      onDelete: () => _deleteInvite(it),
+      countLabel: _countLabel(it),
+      durationMinutes: int.tryParse(it['duration'].toString()) ?? 0,
+      timeLine: isSv ? 'Tid: $meetingTimeLabel' : 'Time: $meetingTimeLabel',
+      timeProgress: timeProgress,
+      timeLeftLabel: timeLeftLabel,
+      placeLine: placeLine,
+      groupName: groupName.isEmpty ? null : groupName,
+      groupLabel: groupLabel,
+      genderTag: genderTag,
+      joinEnabled: !_joining && _canJoinStatus(status),
+      joinButtonLabel: _joinButtonLabel(status),
+      onJoin: () => _joinInvite(it),
+      onShowJoined: () => _showAcceptedUsersModal(it),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -861,88 +925,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             return _matchesAudience(it);
                           }).toList();
 
-                          Widget buildList(List<Map<String, dynamic>> items) {
-                            if (items.isEmpty) {
-                              return Center(
-                                child: Text(isSv
-                                    ? 'Inga inbjudningar för filtret'
-                                    : 'No invites for this filter'),
-                              );
-                            }
-                            return ListView.separated(
-                              itemCount: items.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, i) {
-                                final it = items[i];
-                                final place = (it['place'] ?? '').toString();
-                                final meetingTimeLabel =
-                                    _formatDateTime(it['meeting_time']);
-                                final timeProgress = _timeLeftProgress(
-                                    it['created_at'], it['meeting_time']);
-                                final timeLeftLabel =
-                                    _timeLeftLabel(it['meeting_time']);
-                                final status = _inviteStatus(it);
-                                final canDelete = it['host_user_id']?.toString() ==
-                                    Supabase.instance.client.auth.currentUser?.id;
-                                final groupName =
-                                    (it['group_name'] ?? '').toString().trim();
-                                final genderNormalized = _normalizeGender(
-                                    (it['target_gender'] ?? 'all').toString());
-
-                                final placeLine = place.isEmpty
-                                    ? null
-                                    : isSv
-                                        ? 'Mötesplats: $place'
-                                        : 'Meeting place: $place';
-                                final groupLabel = groupName.isEmpty
-                                    ? null
-                                    : isSv
-                                        ? 'Grupp'
-                                        : 'Group';
-                                final genderTag = genderNormalized == 'all'
-                                    ? null
-                                    : genderNormalized == 'male'
-                                        ? _t('Men', 'Män')
-                                        : _t('Women', 'Kvinnor');
-
-                                return InviteCard(
-                                  activityLabel: _activityLabel(it['activity']),
-                                  hostDisplayName:
-                                      (it['host_display_name'] ?? '').toString(),
-                                  joinedLabel: _joinedOfMaxLabel(it),
-                                  statusLabel: _statusLabel(status),
-                                  statusColor: _statusColor(status),
-                                  statusTextColor: status == InviteStatus.full
-                                      ? Colors.white
-                                      : Colors.black,
-                                  canEdit: canDelete,
-                                  onEdit: () => _editInvite(it),
-                                  onDelete: () => _deleteInvite(it),
-                                  countLabel: _countLabel(it),
-                                  durationMinutes:
-                                      int.tryParse(it['duration'].toString()) ??
-                                          0,
-                                  timeLine: isSv
-                                      ? 'Tid: $meetingTimeLabel'
-                                      : 'Time: $meetingTimeLabel',
-                                  timeProgress: timeProgress,
-                                  timeLeftLabel: timeLeftLabel,
-                                  placeLine: placeLine,
-                                  groupName: groupName.isEmpty ? null : groupName,
-                                  groupLabel: groupLabel,
-                                  genderTag: genderTag,
-                                  joinEnabled:
-                                      !_joining && _canJoinStatus(status),
-                                  joinButtonLabel: _joinButtonLabel(status),
-                                  onJoin: () => _joinInvite(it),
-                                  onShowJoined: () =>
-                                      _showAcceptedUsersModal(it),
-                                );
-                              },
-                            );
-                          }
-
                           return Column(
                             children: [
                               if (hasAnyInvites) ...[
@@ -971,10 +953,34 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               Expanded(
                                 child: TabBarView(
                                   children: [
-                                    buildList(invitesForMe),
-                                    buildList(myInvites),
-                                    buildList(joinedInvites),
-                                    buildList(groupInvites),
+                                    InviteList(
+                                      items: invitesForMe,
+                                      emptyLabel: isSv
+                                          ? 'Inga inbjudningar för filtret'
+                                          : 'No invites for this filter',
+                                      itemBuilder: _buildInviteCard,
+                                    ),
+                                    InviteList(
+                                      items: myInvites,
+                                      emptyLabel: isSv
+                                          ? 'Inga inbjudningar för filtret'
+                                          : 'No invites for this filter',
+                                      itemBuilder: _buildInviteCard,
+                                    ),
+                                    InviteList(
+                                      items: joinedInvites,
+                                      emptyLabel: isSv
+                                          ? 'Inga inbjudningar för filtret'
+                                          : 'No invites for this filter',
+                                      itemBuilder: _buildInviteCard,
+                                    ),
+                                    InviteList(
+                                      items: groupInvites,
+                                      emptyLabel: isSv
+                                          ? 'Inga inbjudningar för filtret'
+                                          : 'No invites for this filter',
+                                      itemBuilder: _buildInviteCard,
+                                    ),
                                   ],
                                 ),
                               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../state/app_state.dart';
+import '../services/error_mapper.dart';
 import '../widgets/social_chrome.dart';
 
 class EditInviteScreen extends StatefulWidget {
@@ -340,8 +341,14 @@ class _EditInviteScreenState extends State<EditInviteScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
+      final message = mapSupabaseError(
+        e,
+        isSv: isSv,
+        fallbackEn: 'Could not update invite',
+        fallbackSv: 'Kunde inte uppdatera inbjudan',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

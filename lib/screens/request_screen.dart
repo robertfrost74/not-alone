@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/social_chrome.dart';
+import '../services/error_mapper.dart';
 
 class RequestScreen extends StatefulWidget {
   final AppState appState;
@@ -549,8 +550,14 @@ class _RequestScreenState extends State<RequestScreen> {
       Navigator.of(context)
           .pushNamedAndRemoveUntil('/invites', (route) => false);
     } on PostgrestException catch (e) {
+      final message = mapSupabaseError(
+        e,
+        isSv: isSv,
+        fallbackEn: 'Could not create invite',
+        fallbackSv: 'Kunde inte skapa inbjudan',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
+        SnackBar(content: Text(message)),
       );
     } catch (_) {
       ScaffoldMessenger.of(context).showSnackBar(
