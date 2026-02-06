@@ -36,6 +36,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _profilesLoaded = false;
   DateTime? _profilesLoadedAt;
   bool _offline = false;
+  bool _loadingInvites = false;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
 
@@ -94,6 +95,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   void _reloadInvites() {
     if (!mounted) return;
+    if (_loadingInvites) return;
     setState(() {
       _invitesFuture = _loadInvites();
     });
@@ -181,6 +183,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
+    _loadingInvites = true;
     try {
       var invites = await _invitesRepository.fetchOpenInvites();
       if (mounted && _offline) {
@@ -245,6 +248,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
         setState(() => _offline = isNetworkError(e));
       }
       return [];
+    } finally {
+      _loadingInvites = false;
     }
   }
 
@@ -394,6 +399,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
         params: {'invite_id': inviteId},
       );
       final inviteMemberId = response?.toString();
+      if (inviteMemberId == null || inviteMemberId.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _t('Could not join invite', 'Kunde inte gå med i inbjudan'),
+            ),
+          ),
+        );
+        return;
+      }
 
       if (!mounted) return;
       await context.pushNamedSafe(

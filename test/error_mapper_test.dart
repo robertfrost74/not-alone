@@ -44,4 +44,34 @@ void main() {
     );
     expect(sv, 'Inbjudan är full');
   });
+
+  test('mapSupabaseError maps invite_closed and not_authenticated', () {
+    const closed = PostgrestException(
+      message: 'invite_closed',
+      code: 'P0001',
+      details: '',
+      hint: '',
+    );
+    final closedSv = mapSupabaseError(
+      closed,
+      isSv: true,
+      fallbackEn: 'fallback',
+      fallbackSv: 'fallback_sv',
+    );
+    expect(closedSv, 'Inbjudan är stängd');
+
+    const notAuth = PostgrestException(
+      message: 'not_authenticated',
+      code: 'P0001',
+      details: '',
+      hint: '',
+    );
+    final notAuthEn = mapSupabaseError(
+      notAuth,
+      isSv: false,
+      fallbackEn: 'fallback',
+      fallbackSv: 'fallback_sv',
+    );
+    expect(notAuthEn, 'You need to sign in');
+  });
 }
