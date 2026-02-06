@@ -13,11 +13,28 @@ class AppState extends ChangeNotifier {
   }
 
   Locale _locale;
+  double? _currentLat;
+  double? _currentLon;
+  String? _city;
 
   Locale get locale => _locale;
+  double? get currentLat => _currentLat;
+  double? get currentLon => _currentLon;
+  String? get city => _city;
 
   void setLocale(Locale locale) {
     _locale = locale;
+    notifyListeners();
+  }
+
+  void setLocation({double? lat, double? lon}) {
+    _currentLat = lat;
+    _currentLon = lon;
+    notifyListeners();
+  }
+
+  void setCity(String? city) {
+    _city = city?.trim().isEmpty == true ? null : city?.trim();
     notifyListeners();
   }
 }

@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../services/invites_repository.dart';
 import '../services/invite_status.dart';
 import '../services/error_mapper.dart';
+import '../services/location_service.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -79,6 +80,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     super.initState();
     _invitesFuture = _loadInvites();
     _startRealtime();
+    _initLocation();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -133,6 +135,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
     _realtimeDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) _reloadInvites();
     });
+  }
+
+  Future<void> _initLocation() async {
+    final metadataCity = (Supabase.instance.client.auth.currentUser?.userMetadata?['city'] ?? '')
+        .toString()
+        .trim();
+    if (widget.appState.city == null && metadataCity.isNotEmpty) {
+      widget.appState.setCity(metadataCity);
+    }
+
+    final position = await LocationService().getPosition(allowPrompt: false);
+    if (!mounted || position == null) return;
+    widget.appState.setLocation(lat: position.latitude, lon: position.longitude);
+    _reloadInvites();
   }
 
   Future<void> _signOut() async {
@@ -194,7 +210,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
     try {
-      var invites = await _invitesRepository.fetchOpenInvites();
+      var invites = await _invitesRepository.fetchOpenInvites(
+        lat: widget.appState.currentLat,
+        lon: widget.appState.currentLon,
+        radiusKm: 20,
+        city: widget.appState.city,
+      );
       if (mounted && _offline) {
         setState(() => _offline = false);
       }

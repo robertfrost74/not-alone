@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import '../widgets/social_chrome.dart';
+import '../services/location_service.dart';
 
 class CreateInviteScreen extends StatefulWidget {
   final AppState appState;
@@ -113,6 +114,20 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
     setState(() => _saving = true);
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
+      final position = await LocationService().getPosition(allowPrompt: true);
+      if (position != null) {
+        widget.appState.setLocation(
+          lat: position.latitude,
+          lon: position.longitude,
+        );
+      }
+      final metadataCity =
+          (Supabase.instance.client.auth.currentUser?.userMetadata?['city'] ?? '')
+              .toString()
+              .trim();
+      final city =
+          widget.appState.city ?? (metadataCity.isEmpty ? null : metadataCity);
+      widget.appState.setCity(city);
       await Supabase.instance.client.from('invites').insert({
         'host_user_id': userId,
         'activity': _activity,
@@ -123,6 +138,10 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
         'duration': _duration,
         'meeting_time': _meetingTime.toIso8601String(),
         'place': place,
+        'lat': widget.appState.currentLat,
+        'lon': widget.appState.currentLon,
+        'city': city,
+        'radius_km': 20,
         'status': 'open',
       });
 

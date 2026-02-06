@@ -10,9 +10,21 @@ class InvitesRepository {
 
   SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
 
-  Future<List<Map<String, dynamic>>> fetchOpenInvites({int limit = 50}) async {
+  Future<List<Map<String, dynamic>>> fetchOpenInvites({
+    int limit = 50,
+    double? lat,
+    double? lon,
+    int radiusKm = 20,
+    String? city,
+  }) async {
     return withRetry(
-      () => fetchOpenInvitesRaw(limit: limit),
+      () => fetchOpenInvitesNearby(
+        limit: limit,
+        lat: lat,
+        lon: lon,
+        radiusKm: radiusKm,
+        city: city,
+      ),
       shouldRetry: isNetworkError,
     );
   }
@@ -26,6 +38,29 @@ class InvitesRepository {
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(limit);
+    return (res as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({
+    int limit = 50,
+    double? lat,
+    double? lon,
+    int radiusKm = 20,
+    String? city,
+  }) async {
+    if ((lat == null || lon == null) && (city == null || city.isEmpty)) {
+      return [];
+    }
+    final res = await _client.rpc(
+      'fetch_open_invites_nearby',
+      params: {
+        'p_lat': lat,
+        'p_lon': lon,
+        'p_radius_km': radiusKm,
+        'p_city': city,
+        'p_limit': limit,
+      },
+    );
     return (res as List).cast<Map<String, dynamic>>();
   }
 

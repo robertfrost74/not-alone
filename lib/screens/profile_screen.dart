@@ -239,6 +239,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'avatar_preset_id': _avatarPresetId,
         'updated_at': DateTime.now().toIso8601String(),
       });
+      widget.appState.setCity(_fixMojibake(_cityController.text.trim()));
       final currentUser = supabase.auth.currentUser;
       if (currentUser != null) {
         await supabase.from('group_members').update({

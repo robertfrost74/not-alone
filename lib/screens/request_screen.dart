@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/social_chrome.dart';
 import '../services/error_mapper.dart';
 import '../widgets/nav_helper.dart';
+import '../services/location_service.dart';
 
 class RequestScreen extends StatefulWidget {
   final AppState appState;
@@ -446,6 +447,10 @@ class _RequestScreenState extends State<RequestScreen> {
     required String place,
     required String mode,
     required int? maxParticipants,
+    required double? lat,
+    required double? lon,
+    required String? city,
+    required int radiusKm,
   }) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     final data = await Supabase.instance.client
@@ -460,6 +465,10 @@ class _RequestScreenState extends State<RequestScreen> {
           'duration': duration,
           'meeting_time': meetingTime.toIso8601String(),
           'place': place,
+          'lat': lat,
+          'lon': lon,
+          'city': city,
+          'radius_km': radiusKm,
           'age_min': _ageRange.start.round(),
           'age_max': _ageRange.end.round(),
           'target_gender': _targetGender,
@@ -524,6 +533,20 @@ class _RequestScreenState extends State<RequestScreen> {
     }
     final meetingTime = _inviteMeetingTime!;
 
+    final position = await LocationService().getPosition(allowPrompt: true);
+    if (position != null) {
+      widget.appState.setLocation(
+        lat: position.latitude,
+        lon: position.longitude,
+      );
+    }
+    final metadataCity =
+        (Supabase.instance.client.auth.currentUser?.userMetadata?['city'] ?? '')
+            .toString()
+            .trim();
+    final city = widget.appState.city ?? (metadataCity.isEmpty ? null : metadataCity);
+    widget.appState.setCity(city);
+
     setState(() => _loading = true);
 
     try {
@@ -545,11 +568,16 @@ class _RequestScreenState extends State<RequestScreen> {
         place: place,
         mode: mode,
         maxParticipants: mode == 'group' ? _participantCount : null,
+        lat: widget.appState.currentLat,
+        lon: widget.appState.currentLon,
+        city: city,
+        radiusKm: _radiusKm.round(),
       );
 
       if (!mounted) return;
       context.pushNamedAndRemoveUntilSafe('/invites', (route) => false);
     } on PostgrestException catch (e) {
+      if (!mounted) return;
       final message = mapSupabaseError(
         e,
         isSv: isSv,
@@ -560,6 +588,7 @@ class _RequestScreenState extends State<RequestScreen> {
         SnackBar(content: Text(message)),
       );
     } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(isSv ? 'Något gick fel' : 'Something went wrong')),
