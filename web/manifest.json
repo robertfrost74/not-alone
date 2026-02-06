@@ -1,6 +1,6 @@
 {
-    "name": "not_alone",
-    "short_name": "not_alone",
+    "name": "Social",
+    "short_name": "Social",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -75,6 +75,22 @@ void main() {
     expect(notAuthEn, 'You need to sign in');
   });
 
+  test('mapSupabaseError maps user_blocked', () {
+    const blocked = PostgrestException(
+      message: 'user_blocked',
+      code: 'P0001',
+      details: '',
+      hint: '',
+    );
+    final sv = mapSupabaseError(
+      blocked,
+      isSv: true,
+      fallbackEn: 'fallback',
+      fallbackSv: 'fallback_sv',
+    );
+    expect(sv, 'Du kan inte gå med i denna inbjudan');
+  });
+
   test('mapSupabaseError maps permission denied', () {
     const err = PostgrestException(
       message: 'permission denied for table invites',

@@ -6,6 +6,7 @@ import '../services/invites_repository.dart';
 import '../services/invite_status.dart';
 import '../services/error_mapper.dart';
 import '../services/location_service.dart';
+import '../services/profile_completion.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -39,6 +40,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _offline = false;
   bool _loadingInvites = false;
   bool _realtimeFailed = false;
+  Set<String> _blockedUserIds = {};
   DateTime? _lastJoinAttemptAt;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   static const Duration _joinCooldown = Duration(seconds: 2);
@@ -73,6 +75,64 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final normalized = _normalizeGender(raw);
     if (normalized != 'male' && normalized != 'female') return null;
     return normalized;
+  }
+
+  String _missingFieldLabel(String field) {
+    switch (field) {
+      case 'username':
+        return _t('username', 'användarnamn');
+      case 'age':
+        return _t('age', 'ålder');
+      case 'gender':
+        return _t('gender', 'kön');
+      case 'city':
+        return _t('city', 'stad');
+      default:
+        return field;
+    }
+  }
+
+  Future<bool> _ensureProfileCompleteForJoin() async {
+    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final result = checkProfileCompletion(metadata);
+    if (result.isComplete) return true;
+
+    final missing = result.missingFields.map(_missingFieldLabel).join(', ');
+    if (!mounted) return false;
+
+    final goToProfile = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => SocialDialog(
+            title: Text(_t('Complete profile', 'Fyll i profilen')),
+            content: Text(
+              _t(
+                'Please complete your profile to join invites. Missing: $missing.',
+                'Du behöver fylla i profilen för att gå med i inbjudningar. Saknas: $missing.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_t('Not now', 'Inte nu')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(_t('Edit profile', 'Redigera profil')),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (goToProfile && mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(appState: widget.appState),
+        ),
+      );
+    }
+    return false;
   }
 
   @override
@@ -216,6 +276,23 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  Future<Set<String>> _fetchBlockedUserIds(String userId) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('user_blocks')
+          .select('blocked_id')
+          .match({'blocker_id': userId});
+      final blockedIds = <String>{};
+      for (final row in rows.whereType<Map<String, dynamic>>()) {
+        final id = row['blocked_id']?.toString();
+        if (id != null && id.isNotEmpty) blockedIds.add(id);
+      }
+      return blockedIds;
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
     try {
@@ -232,6 +309,18 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
       final currentUserId = Supabase.instance.client.auth.currentUser?.id;
       if (currentUserId != null) {
+        final blockedIds = await _fetchBlockedUserIds(currentUserId);
+        if (mounted) {
+          setState(() => _blockedUserIds = blockedIds);
+        } else {
+          _blockedUserIds = blockedIds;
+        }
+        invites = invites.where((invite) {
+          final hostId = invite['host_user_id']?.toString();
+          if (hostId == null || hostId.isEmpty) return true;
+          return !blockedIds.contains(hostId);
+        }).toList();
+
         final memberGroupIds =
             await _invitesRepository.fetchUserGroupIds(currentUserId);
         invites = invites.where((invite) {
@@ -411,10 +500,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
     if (_isJoinCooldownActive) return;
     _lastJoinAttemptAt = DateTime.now();
+    final canProceed = await _ensureProfileCompleteForJoin();
+    if (!canProceed || !mounted) return;
+
     final inviteId = invite['id']?.toString();
     if (inviteId == null || inviteId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_t('Invalid invite id', 'Ogiltigt invite-id'))),
+      );
+      return;
+    }
+
+    final hostId = invite['host_user_id']?.toString();
+    if (hostId != null && hostId.isNotEmpty && _blockedUserIds.contains(hostId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t(
+              'You blocked this user. Unblock to join.',
+              'Du har blockerat användaren. Avblockera för att gå med.',
+            ),
+          ),
+        ),
       );
       return;
     }
@@ -569,6 +676,217 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  Future<void> _showInviteActions(Map<String, dynamic> invite) async {
+    final hostId = invite['host_user_id']?.toString() ?? '';
+    if (hostId.isEmpty) return;
+    final hostName = (invite['host_display_name'] ?? '').toString().trim();
+    final isBlocked = _blockedUserIds.contains(hostId);
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF0F1A1A),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SocialSheetContent(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    hostName.isEmpty
+                        ? _t('User actions', 'Åtgärder')
+                        : _t('Actions for $hostName', 'Åtgärder för $hostName'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _reportUser(invite);
+                    },
+                    icon: const Icon(Icons.flag_outlined),
+                    label: Text(_t('Report user', 'Rapportera användare')),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor:
+                          isBlocked ? Colors.white24 : const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _toggleBlock(hostId, isBlocked);
+                    },
+                    icon: Icon(isBlocked ? Icons.lock_open : Icons.block),
+                    label: Text(
+                      isBlocked ? _t('Unblock', 'Avblockera') : _t('Block', 'Blockera'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _toggleBlock(String userId, bool isBlocked) async {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+    try {
+      if (isBlocked) {
+        await Supabase.instance.client.from('user_blocks').delete().match({
+          'blocker_id': currentUser.id,
+          'blocked_id': userId,
+        });
+      } else {
+        await Supabase.instance.client.from('user_blocks').insert({
+          'blocker_id': currentUser.id,
+          'blocked_id': userId,
+        });
+      }
+      if (!mounted) return;
+      _reloadInvites();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isBlocked
+                ? _t('User unblocked', 'Användaren avblockerad')
+                : _t('User blocked', 'Användaren blockerad'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+      );
+    }
+  }
+
+  Future<void> _reportUser(Map<String, dynamic> invite) async {
+    final hostId = invite['host_user_id']?.toString() ?? '';
+    if (hostId.isEmpty) return;
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+
+    final reasons = [
+      ('spam', _t('Spam', 'Spam')),
+      ('inappropriate', _t('Inappropriate content', 'Olämpligt innehåll')),
+      ('fake', _t('Fake profile', 'Falsk profil')),
+      ('harassment', _t('Harassment', 'Trakasserier')),
+      ('other', _t('Other', 'Annat')),
+    ];
+    var selected = reasons.first.$1;
+    final detailsController = TextEditingController();
+
+    final submit = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setState) => SocialDialog(
+              title: Text(_t('Report user', 'Rapportera användare')),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_t('Reason', 'Anledning')),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: reasons
+                        .map(
+                          (reason) => SocialChoiceChip(
+                            label: reason.$2,
+                            selected: selected == reason.$1,
+                            onSelected: (_) => setState(() {
+                              selected = reason.$1;
+                            }),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_t('Details (optional)', 'Detaljer (valfritt)')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: detailsController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: _t('Tell us what happened', 'Beskriv vad som hänt'),
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.08),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white24),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF2DD4CF)),
+                      ),
+                    ),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(_t('Cancel', 'Avbryt')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: Text(_t('Submit report', 'Skicka rapport')),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (!submit) {
+      detailsController.dispose();
+      return;
+    }
+
+    final details = detailsController.text.trim();
+    detailsController.dispose();
+
+    try {
+      await Supabase.instance.client.from('user_reports').insert({
+        'reporter_id': currentUser.id,
+        'reported_id': hostId,
+        'invite_id': invite['id'],
+        'reason': selected,
+        'details': details.isEmpty ? null : details,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _t('Report submitted', 'Rapport skickad'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+      );
+    }
+  }
+
   String _activityLabel(String a) {
     switch (a) {
       case 'walk':
@@ -712,8 +1030,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
         _timeLeftProgress(it['created_at'], it['meeting_time']);
     final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
     final status = _inviteStatus(it);
-    final canDelete = it['host_user_id']?.toString() ==
-        Supabase.instance.client.auth.currentUser?.id;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final hostId = it['host_user_id']?.toString();
+    final canDelete = hostId != null && hostId == currentUserId;
+    final canShowActions =
+        hostId != null && hostId.isNotEmpty && hostId != currentUserId;
     final groupName = (it['group_name'] ?? '').toString().trim();
     final genderNormalized =
         _normalizeGender((it['target_gender'] ?? 'all').toString());
@@ -758,6 +1079,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       joinButtonLabel: _joinButtonLabel(status),
       onJoin: () => _joinInvite(it),
       onShowJoined: () => _showAcceptedUsersModal(it),
+      onMore: canShowActions ? () => _showInviteActions(it) : null,
     );
   }
 

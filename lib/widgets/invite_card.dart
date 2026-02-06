@@ -23,6 +23,7 @@ class InviteCard extends StatelessWidget {
   final bool joinEnabled;
   final String joinButtonLabel;
   final VoidCallback onJoin;
+  final VoidCallback? onMore;
 
   const InviteCard({
     super.key,
@@ -48,6 +49,7 @@ class InviteCard extends StatelessWidget {
     required this.joinEnabled,
     required this.joinButtonLabel,
     required this.onJoin,
+    this.onMore,
   });
 
   @override
@@ -151,6 +153,17 @@ class InviteCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ],
+              if (onMore != null) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: onMore,
+                  child: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Icon(Icons.more_vert, size: 22),
+                  ),
                 ),
               ],
             ],

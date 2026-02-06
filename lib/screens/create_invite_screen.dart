@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
 import '../widgets/social_chrome.dart';
 import '../services/location_service.dart';
+import '../services/profile_completion.dart';
+import 'profile_screen.dart';
 
 class CreateInviteScreen extends StatefulWidget {
   final AppState appState;
@@ -98,6 +100,9 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
   }
 
   Future<void> _submit() async {
+    final canProceed = await _ensureProfileComplete();
+    if (!canProceed || !mounted) return;
+
     final place = _placeController.text.trim();
     if (place.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,6 +161,64 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _missingFieldLabel(String field) {
+    switch (field) {
+      case 'username':
+        return _t('username', 'användarnamn');
+      case 'age':
+        return _t('age', 'ålder');
+      case 'gender':
+        return _t('gender', 'kön');
+      case 'city':
+        return _t('city', 'stad');
+      default:
+        return field;
+    }
+  }
+
+  Future<bool> _ensureProfileComplete() async {
+    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final result = checkProfileCompletion(metadata);
+    if (result.isComplete) return true;
+
+    final missing = result.missingFields.map(_missingFieldLabel).join(', ');
+    if (!mounted) return false;
+
+    final goToProfile = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => SocialDialog(
+            title: Text(_t('Complete profile', 'Fyll i profilen')),
+            content: Text(
+              _t(
+                'Please complete your profile to create invites. Missing: $missing.',
+                'Du behöver fylla i profilen för att skapa inbjudningar. Saknas: $missing.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_t('Not now', 'Inte nu')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(_t('Edit profile', 'Redigera profil')),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (goToProfile && mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(appState: widget.appState),
+        ),
+      );
+    }
+    return false;
   }
 
   @override

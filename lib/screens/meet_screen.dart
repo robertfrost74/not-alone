@@ -44,6 +44,8 @@ class _MeetScreenState extends State<MeetScreen> {
   int _meetingCountdownSeconds = 0;
   double _meetingProgress = 0;
   String? _meetupId;
+  String _memberStatus = 'coming';
+  bool _updatingStatus = false;
 
   String _t(String en, String sv) => widget.appState.t(en, sv);
   bool get _hasPlace => _placeName.trim().isNotEmpty;
@@ -57,6 +59,7 @@ class _MeetScreenState extends State<MeetScreen> {
     _placeName = (widget.initialPlace ?? '').trim();
     _remainingSeconds = widget.minutes * 60;
     _startMeetingCountdown();
+    _loadMemberStatus();
   }
 
   @override
@@ -64,6 +67,62 @@ class _MeetScreenState extends State<MeetScreen> {
     _timer?.cancel();
     _meetingTimer?.cancel();
     super.dispose();
+  }
+
+  String _normalizeMemberStatus(String? raw) {
+    final value = (raw ?? '').toString().trim().toLowerCase();
+    if (value == 'joined' || value == 'accepted') return 'coming';
+    if (value == 'maybe') return 'maybe';
+    if (value == 'cannot_attend') return 'cannot_attend';
+    return 'coming';
+  }
+
+  Future<void> _loadMemberStatus() async {
+    final inviteMemberId = widget.inviteMemberId;
+    if (inviteMemberId == null || inviteMemberId.isEmpty) return;
+    try {
+      final rows = await Supabase.instance.client
+          .from('invite_members')
+          .select('status')
+          .match({'id': inviteMemberId})
+          .limit(1);
+      if (rows.isNotEmpty) {
+        final first = rows.first;
+        final raw = first['status'];
+        if (!mounted) return;
+        setState(() => _memberStatus = _normalizeMemberStatus(raw?.toString()));
+      }
+    } catch (_) {
+      // Keep silent; status will default to coming.
+    }
+  }
+
+  Future<void> _setMemberStatus(String status) async {
+    final inviteMemberId = widget.inviteMemberId;
+    if (inviteMemberId == null || inviteMemberId.isEmpty) return;
+    if (_updatingStatus) return;
+
+    setState(() => _updatingStatus = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'set_invite_member_status',
+        params: {
+          'invite_member_id': inviteMemberId,
+          'p_status': status,
+        },
+      );
+      if (!mounted) return;
+      setState(() => _memberStatus = status);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_t('Sync failed', 'Synk misslyckades')}: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _updatingStatus = false);
+    }
   }
 
   String _mmss(int seconds) {
@@ -284,6 +343,8 @@ class _MeetScreenState extends State<MeetScreen> {
         'leave_invite',
         params: {'invite_member_id': inviteMemberId},
       );
+      if (!mounted) return;
+      setState(() => _memberStatus = 'cannot_attend');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -404,6 +465,36 @@ class _MeetScreenState extends State<MeetScreen> {
                     placeText,
                     _editPlaceName,
                   ),
+                  if (widget.inviteMemberId != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      isSv ? 'Status' : 'Status',
+                      style: const TextStyle(
+                          color: Colors.white70, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        SocialChoiceChip(
+                          label: isSv ? 'Kommer' : 'Coming',
+                          selected: _memberStatus == 'coming',
+                          onSelected: _updatingStatus
+                              ? null
+                              : (_) => _setMemberStatus('coming'),
+                        ),
+                        SocialChoiceChip(
+                          label: isSv ? 'Kanske' : 'Maybe',
+                          selected: _memberStatus == 'maybe',
+                          onSelected: _updatingStatus
+                              ? null
+                              : (_) => _setMemberStatus('maybe'),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   if (!_started) ...[
                     if (widget.initialCreatedAt != null &&

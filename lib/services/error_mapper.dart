@@ -29,6 +29,11 @@ String mapSupabaseError(
     if (message == 'invite_closed') {
       return isSv ? 'Inbjudan är stängd' : 'Invite is closed';
     }
+    if (message == 'user_blocked') {
+      return isSv
+          ? 'Du kan inte gå med i denna inbjudan'
+          : 'You cannot join this invite';
+    }
     if (message == 'not_authenticated') {
       return isSv ? 'Du behöver logga in' : 'You need to sign in';
     }
