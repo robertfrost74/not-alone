@@ -335,6 +335,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (activity != _normalizeActivity(_activity)) return false;
     }
 
+    final currentUserId =
+        Supabase.instance.client.auth.currentUser?.id ?? '';
+    if (invite['host_user_id']?.toString() == currentUserId) {
+      return true;
+    }
+
     final age = _currentUserAge;
     if (age != null) {
       final minRaw = invite['age_min'];
@@ -446,6 +452,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
     String targetGender =
         _normalizeGender((invite['target_gender'] ?? 'all').toString());
     if (targetGender != 'male' && targetGender != 'female') targetGender = 'all';
+    String? selectedGroupId = invite['group_id']?.toString();
+    final groupRow = invite['groups'] as Map<String, dynamic>?;
+    String? selectedGroupName = (groupRow?['name'] ?? '').toString();
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -481,6 +490,134 @@ class _InvitesScreenState extends State<InvitesScreen> {
               );
             }
 
+            Future<void> pickGroup() async {
+              final userId = Supabase.instance.client.auth.currentUser?.id;
+              if (userId == null) return;
+              final rows = await Supabase.instance.client
+                  .from('group_members')
+                  .select('group_id, groups ( id, name )')
+                  .match({'user_id': userId});
+              final List<_GroupOption> options = [];
+              if (rows is List) {
+                final seen = <String>{};
+                for (final row in rows.whereType<Map<String, dynamic>>()) {
+                  final group = row['groups'] as Map<String, dynamic>?;
+                  if (group == null) continue;
+                  final id = group['id']?.toString() ?? '';
+                  if (id.isEmpty || seen.contains(id)) continue;
+                  seen.add(id);
+                  options.add(
+                    _GroupOption(
+                      id: id,
+                      name: (group['name'] ?? '').toString(),
+                    ),
+                  );
+                }
+              }
+
+              String? tempSelected = selectedGroupId;
+              String? tempName = selectedGroupName;
+              final result = await showDialog<String?>(
+                context: sheetContext,
+                builder: (dialogContext) {
+                  return SocialDialog(
+                    insetPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 24),
+                    backgroundColor:
+                        const Color(0xFF0F1A1A).withValues(alpha: 0.96),
+                    title: Text(_t('Choose group', 'Välj grupp')),
+                    content: options.isEmpty
+                        ? Text(_t('No groups yet', 'Inga grupper ännu'))
+                        : Theme(
+                            data: Theme.of(dialogContext).copyWith(
+                              unselectedWidgetColor: Colors.white60,
+                              radioTheme: RadioThemeData(
+                                fillColor:
+                                    WidgetStateProperty.resolveWith<Color>(
+                                  (states) =>
+                                      states.contains(WidgetState.selected)
+                                          ? const Color(0xFF2DD4CF)
+                                          : Colors.white60,
+                                ),
+                              ),
+                            ),
+                            child: StatefulBuilder(
+                              builder: (context, setInnerState) {
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    RadioListTile<String?>(
+                                      value: null,
+                                      groupValue: tempSelected,
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                        _t('All users', 'Alla'),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      onChanged: (v) {
+                                        setInnerState(() {
+                                          tempSelected = v;
+                                          tempName = null;
+                                        });
+                                      },
+                                    ),
+                                    ...options.map(
+                                      (g) => RadioListTile<String?>(
+                                        value: g.id,
+                                        groupValue: tempSelected,
+                                        controlAffinity:
+                                            ListTileControlAffinity.leading,
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(
+                                          g.name.isEmpty
+                                              ? _t('Unnamed group', 'Grupp utan namn')
+                                              : g.name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        onChanged: (v) {
+                                          setInnerState(() {
+                                            tempSelected = v;
+                                            tempName = g.name;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, null),
+                        child: Text(_t('Cancel', 'Avbryt')),
+                      ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, tempSelected),
+                        child: Text(_t('Save', 'Spara')),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              if (result == null) return;
+              if (!sheetContext.mounted) return;
+              setSheetState(() {
+                selectedGroupId = result;
+                selectedGroupName = tempName;
+              });
+            }
+
             Future<void> pickMeetingTime() async {
               final date = await showDatePicker(
                 context: sheetContext,
@@ -496,6 +633,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
                 helpText: isSv ? 'Välj tid' : 'Pick time',
               );
               if (time == null) return;
+              if (!sheetContext.mounted) return;
               setSheetState(() {
                 meetingTime = DateTime(
                     date.year, date.month, date.day, time.hour, time.minute);
@@ -585,15 +723,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           style: const TextStyle(
                               color: Colors.white, fontWeight: FontWeight.w600),
                         ),
-                        Slider(
-                          min: 10,
-                          max: 120,
-                          divisions: 110,
-                          value: duration.toDouble().clamp(10, 120),
-                          label: '$duration',
-                          onChanged: (v) =>
-                              setSheetState(() => duration = v.round()),
-                        ),
+                      Slider(
+                        min: 10,
+                        max: 180,
+                        divisions: 170,
+                        value: duration.toDouble().clamp(10, 180),
+                        label: '$duration',
+                        onChanged: (v) =>
+                            setSheetState(() => duration = v.round()),
+                      ),
                         if (mode != 'one_to_one') ...[
                           const SizedBox(height: 8),
                           Text(
@@ -601,15 +739,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             style: const TextStyle(
                                 color: Colors.white, fontWeight: FontWeight.w600),
                           ),
-                          Slider(
-                            min: 2,
-                            max: 10,
-                            divisions: 8,
-                            value: maxParticipants.toDouble().clamp(2, 10),
-                            label: '$maxParticipants',
-                            onChanged: (v) =>
-                                setSheetState(() => maxParticipants = v.round()),
-                          ),
+                        Slider(
+                          min: 1,
+                          max: 20,
+                          divisions: 19,
+                          value: maxParticipants.toDouble().clamp(1, 20),
+                          label: '$maxParticipants',
+                          onChanged: (v) =>
+                              setSheetState(() => maxParticipants = v.round()),
+                        ),
                         ],
                         const SizedBox(height: 8),
                         Text(
@@ -639,26 +777,77 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           spacing: 10,
                           runSpacing: 10,
                           children: [
-                          SocialChoiceChip(
-                            label: _t('All', 'Alla'),
-                            selected: targetGender == 'all',
-                            onSelected: (_) =>
-                                setSheetState(() => targetGender = 'all'),
-                          ),
-                          SocialChoiceChip(
-                            label: _t('Men', 'Män'),
-                            selected: targetGender == 'male',
-                            onSelected: (_) =>
-                                setSheetState(() => targetGender = 'male'),
-                          ),
-                          SocialChoiceChip(
-                            label: _t('Women', 'Kvinnor'),
-                            selected: targetGender == 'female',
-                            onSelected: (_) =>
-                                setSheetState(() => targetGender = 'female'),
-                          ),
+                            SocialChoiceChip(
+                              label: _t('All', 'Alla'),
+                              selected: selectedGroupId == null &&
+                                  targetGender == 'all',
+                              onSelected: (_) => setSheetState(() {
+                                selectedGroupId = null;
+                                selectedGroupName = null;
+                                targetGender = 'all';
+                              }),
+                            ),
+                            SocialChoiceChip(
+                              label: _t('Men', 'Män'),
+                              selected: selectedGroupId == null &&
+                                  targetGender == 'male',
+                              onSelected: (_) => setSheetState(() {
+                                selectedGroupId = null;
+                                selectedGroupName = null;
+                                targetGender = 'male';
+                              }),
+                            ),
+                            SocialChoiceChip(
+                              label: _t('Women', 'Kvinnor'),
+                              selected: selectedGroupId == null &&
+                                  targetGender == 'female',
+                              onSelected: (_) => setSheetState(() {
+                                selectedGroupId = null;
+                                selectedGroupName = null;
+                                targetGender = 'female';
+                              }),
+                            ),
+                            SocialChoiceChip(
+                              label: _t('Group', 'Grupp'),
+                              selected: selectedGroupId != null,
+                              onSelected: (_) => pickGroup(),
+                            ),
                           ],
                         ),
+                        if (selectedGroupName != null &&
+                            selectedGroupName!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                child: Text(
+                                  selectedGroupName!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _t('Group', 'Grupp'),
+                                style: const TextStyle(
+                                  color: Colors.white60,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
@@ -679,7 +868,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
     );
 
     final updatedPlace = placeController.text.trim();
-    placeController.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      placeController.dispose();
+    });
     if (saved != true) return;
 
     try {
@@ -692,6 +883,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
         'age_min': ageRange.start.round(),
         'age_max': ageRange.end.round(),
         'target_gender': targetGender,
+        'group_id': selectedGroupId,
       }).match({
         'id': inviteId,
         'host_user_id': userId,
@@ -934,7 +1126,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
             unselectedLabelColor: Colors.white60,
             indicatorColor: const Color(0xFF2DD4CF),
             tabs: [
-              Tab(text: isSv ? 'Aktuella' : 'Current'),
+              Tab(text: isSv ? 'Andras' : 'Others'),
               Tab(text: isSv ? 'Mina' : 'Mine'),
               Tab(text: isSv ? 'Tackat ja' : 'Joined'),
               Tab(text: isSv ? 'Grupper' : 'Groups'),
@@ -1051,22 +1243,25 @@ class _InvitesScreenState extends State<InvitesScreen> {
               child: SocialPanel(
               child: Column(
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                RequestScreen(appState: widget.appState),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    RequestScreen(appState: widget.appState),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
                           ),
-                        );
-                      },
-                      child: Text(_t('Create invite', 'Skapa inbjudan')),
-                    ),
-                  ),
+                          child: Text(_t('Create invite', 'Skapa inbjudan')),
+                        ),
+                      ),
                   const SizedBox(height: 12),
                   if (_joining) const LinearProgressIndicator(),
                   const SizedBox(height: 12),
@@ -1118,8 +1313,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           }).toList();
 
                           final groupInvites = filtered.where((it) {
-                            final mode = _normalizeMode((it['mode'] ?? '').toString());
-                            return mode != 'one_to_one';
+                            final groupId = it['group_id']?.toString();
+                            return groupId != null && groupId.isNotEmpty;
                           }).toList();
 
                           Widget buildList(List<Map<String, dynamic>> items) {
@@ -1372,11 +1567,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                       SizedBox(
                                         width: double.infinity,
                                         height: 44,
-                                        child: FilledButton(
+                                        child: OutlinedButton(
                                           onPressed:
                                               _joining || !_canJoinStatus(status)
                                                   ? null
                                                   : () => _joinInvite(it),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.white,
+                                          ),
                                           child: Text(_joinButtonLabel(status)),
                                         ),
                                       ),
@@ -1522,4 +1720,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
       ),
     );
   }
+}
+
+class _GroupOption {
+  final String id;
+  final String name;
+
+  const _GroupOption({
+    required this.id,
+    required this.name,
+  });
 }
