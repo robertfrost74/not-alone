@@ -261,7 +261,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                     onChanged: (value) => setState(() => _talkLevel = value),
                   ),
                   const SizedBox(height: 14),
-                  _SectionTitle(title: _t('Duration', 'Langd')),
+                  _SectionTitle(title: _t('Duration', 'Längd på aktivitet')),
                   const SizedBox(height: 8),
                   Container(
                     padding:
@@ -291,7 +291,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  _SectionTitle(title: _t('Radius', 'Radie')),
+                  _SectionTitle(title: _t('Radius', 'Avstånd från mig')),
                   const SizedBox(height: 8),
                   Container(
                     padding:

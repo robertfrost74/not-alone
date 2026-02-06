@@ -730,7 +730,7 @@ class _RequestScreenState extends State<RequestScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _Segment(title: _t('Duration', 'Längd')),
+                  _Segment(title: _t('Duration', 'Längd på aktivitet')),
                   const SizedBox(height: 8),
                   Container(
                     padding:
@@ -817,7 +817,7 @@ class _RequestScreenState extends State<RequestScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _Segment(title: _t('Radius', 'Radie')),
+                  _Segment(title: _t('Radius', 'Avstånd från mig')),
                   const SizedBox(height: 8),
                   Container(
                     padding:
