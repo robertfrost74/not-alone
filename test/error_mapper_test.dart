@@ -27,4 +27,21 @@ void main() {
     );
     expect(en, 'You already joined');
   });
+
+  test('mapSupabaseError maps invite_full', () {
+    const error = PostgrestException(
+      message: 'invite_full',
+      code: 'P0001',
+      details: '',
+      hint: '',
+    );
+
+    final sv = mapSupabaseError(
+      error,
+      isSv: true,
+      fallbackEn: 'fallback',
+      fallbackSv: 'fallback_sv',
+    );
+    expect(sv, 'Inbjudan är full');
+  });
 }

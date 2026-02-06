@@ -15,6 +15,7 @@ import '../widgets/social_chrome.dart';
 import '../widgets/invite_activity_filter.dart';
 import '../widgets/invite_card.dart';
 import '../widgets/invite_list.dart';
+import '../widgets/nav_helper.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
@@ -33,6 +34,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
   RealtimeChannel? _invitesChannel;
   final Map<String, String> _hostNamesCache = {};
   bool _profilesLoaded = false;
+  DateTime? _profilesLoadedAt;
+  bool _offline = false;
+  static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
@@ -177,55 +181,71 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
-    var invites = await _invitesRepository.fetchOpenInvites();
-    if (invites.isEmpty) return invites;
-
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    if (currentUserId != null) {
-      final memberGroupIds =
-          await _invitesRepository.fetchUserGroupIds(currentUserId);
-      invites = invites.where((invite) {
-        final groupId = invite['group_id']?.toString();
-        if (groupId == null || groupId.isEmpty) return true;
-        return memberGroupIds.contains(groupId);
-      }).toList();
-    }
-
-    if (!_profilesLoaded) {
-      try {
-        final profileNames = await _invitesRepository.fetchProfileNames();
-        _hostNamesCache.addAll(profileNames);
-        _profilesLoaded = true;
-      } catch (_) {
-        // Keep invites page resilient if profiles table/policies differ.
+    try {
+      var invites = await _invitesRepository.fetchOpenInvites();
+      if (mounted && _offline) {
+        setState(() => _offline = false);
       }
-    }
+      if (invites.isEmpty) return invites;
 
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    final currentUsername =
-        (currentUser?.userMetadata?['username'] ?? '').toString().trim();
-    final currentDisplay = currentUsername.isNotEmpty ? currentUsername : '';
-
-    for (final invite in invites) {
-      final members =
-          (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
-              const [];
-      invite['accepted_count'] = members
-          .where((member) => member['status']?.toString() != 'cannot_attend')
-          .length;
-      final hostId = invite['host_user_id']?.toString() ?? '';
-      final fallback = hostId.isEmpty
-          ? _t('Unknown user', 'Okänd användare')
-          : hostId.substring(0, hostId.length < 8 ? hostId.length : 8);
-      if (currentDisplay.isNotEmpty && hostId == currentUserId) {
-        invite['host_display_name'] = currentDisplay;
-      } else {
-        invite['host_display_name'] = _hostNamesCache[hostId] ?? fallback;
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (currentUserId != null) {
+        final memberGroupIds =
+            await _invitesRepository.fetchUserGroupIds(currentUserId);
+        invites = invites.where((invite) {
+          final groupId = invite['group_id']?.toString();
+          if (groupId == null || groupId.isEmpty) return true;
+          return memberGroupIds.contains(groupId);
+        }).toList();
       }
-      final group = invite['groups'] as Map<String, dynamic>?;
-      invite['group_name'] = (group?['name'] ?? '').toString();
+
+      final shouldReloadProfiles = !_profilesLoaded ||
+          _profilesLoadedAt == null ||
+          DateTime.now().difference(_profilesLoadedAt!) > _profileCacheTtl;
+      if (shouldReloadProfiles) {
+        try {
+          final profileNames = await _invitesRepository.fetchProfileNames();
+          _hostNamesCache
+            ..clear()
+            ..addAll(profileNames);
+          _profilesLoaded = true;
+          _profilesLoadedAt = DateTime.now();
+        } catch (_) {
+          // Keep invites page resilient if profiles table/policies differ.
+        }
+      }
+
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      final currentUsername =
+          (currentUser?.userMetadata?['username'] ?? '').toString().trim();
+      final currentDisplay = currentUsername.isNotEmpty ? currentUsername : '';
+
+      for (final invite in invites) {
+        final members =
+            (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+                const [];
+        invite['accepted_count'] = members
+            .where((member) => member['status']?.toString() != 'cannot_attend')
+            .length;
+        final hostId = invite['host_user_id']?.toString() ?? '';
+        final fallback = hostId.isEmpty
+            ? _t('Unknown user', 'Okänd användare')
+            : hostId.substring(0, hostId.length < 8 ? hostId.length : 8);
+        if (currentDisplay.isNotEmpty && hostId == currentUserId) {
+          invite['host_display_name'] = currentDisplay;
+        } else {
+          invite['host_display_name'] = _hostNamesCache[hostId] ?? fallback;
+        }
+        final group = invite['groups'] as Map<String, dynamic>?;
+        invite['group_name'] = (group?['name'] ?? '').toString();
+      }
+      return invites;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _offline = isNetworkError(e));
+      }
+      return [];
     }
-    return invites;
   }
 
   String _normalizeMode(String value) {
@@ -369,37 +389,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
       _joining = true;
     });
     try {
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_t('Not signed in', 'Inte inloggad'))),
-        );
-        return;
-      }
-
-      final existing = await Supabase.instance.client
-          .from('invite_members')
-          .select('id')
-          .match({'invite_id': inviteId, 'user_id': userId})
-          .maybeSingle();
-
-      String? inviteMemberId = existing?['id']?.toString();
-      if (inviteMemberId == null) {
-        final inserted = await Supabase.instance.client
-            .from('invite_members')
-            .insert({
-              'invite_id': inviteId,
-              'user_id': userId,
-              'role': 'member',
-            })
-            .select('id')
-            .single();
-        inviteMemberId = inserted['id']?.toString();
-      }
+      final response = await Supabase.instance.client.rpc(
+        'join_invite',
+        params: {'invite_id': inviteId},
+      );
+      final inviteMemberId = response?.toString();
 
       if (!mounted) return;
-      Navigator.pushNamed(
-        context,
+      await context.pushNamedSafe(
         '/meet',
         arguments: {
           'invite_id': inviteId,
@@ -441,8 +438,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       return;
     }
 
-    final saved = await Navigator.push<bool>(
-      context,
+    final saved = await context.pushSafe<bool>(
       MaterialPageRoute(
         builder: (_) => EditInviteScreen(
           appState: widget.appState,
@@ -845,31 +841,50 @@ class _InvitesScreenState extends State<InvitesScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: SocialPanel(
-              child: Column(
-                children: [
-                      SizedBox(
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          context.pushSafe(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  RequestScreen(appState: widget.appState),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(_t('Create invite', 'Skapa inbjudan')),
+                      ),
+                    ),
+                    if (_offline) ...[
+                      const SizedBox(height: 10),
+                      Container(
                         width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    RequestScreen(appState: widget.appState),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.redAccent),
+                        ),
+                        child: Text(
+                          _t('Offline. Trying to reconnect…',
+                              'Offline. Försöker ansluta…'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: Text(_t('Create invite', 'Skapa inbjudan')),
                         ),
                       ),
-                  const SizedBox(height: 12),
-                  if (_joining) const LinearProgressIndicator(),
-                  const SizedBox(height: 12),
-                  Expanded(
+                    ],
+                    const SizedBox(height: 12),
+                    if (_joining) const LinearProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Expanded(
                       child: FutureBuilder<List<Map<String, dynamic>>>(
                         future: _invitesFuture,
                         builder: (context, snap) {

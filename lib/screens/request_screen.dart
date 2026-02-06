@@ -3,6 +3,7 @@ import '../state/app_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/social_chrome.dart';
 import '../services/error_mapper.dart';
+import '../widgets/nav_helper.dart';
 
 class RequestScreen extends StatefulWidget {
   final AppState appState;
@@ -547,8 +548,7 @@ class _RequestScreenState extends State<RequestScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil('/invites', (route) => false);
+      context.pushNamedAndRemoveUntilSafe('/invites', (route) => false);
     } on PostgrestException catch (e) {
       final message = mapSupabaseError(
         e,
