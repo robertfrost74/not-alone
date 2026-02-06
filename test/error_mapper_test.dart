@@ -74,4 +74,20 @@ void main() {
     );
     expect(notAuthEn, 'You need to sign in');
   });
+
+  test('mapSupabaseError maps permission denied', () {
+    const err = PostgrestException(
+      message: 'permission denied for table invites',
+      code: '42501',
+      details: '',
+      hint: '',
+    );
+    final en = mapSupabaseError(
+      err,
+      isSv: false,
+      fallbackEn: 'fallback',
+      fallbackSv: 'fallback_sv',
+    );
+    expect(en, 'Permission denied for this action');
+  });
 }

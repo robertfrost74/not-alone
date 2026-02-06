@@ -18,6 +18,11 @@ String mapSupabaseError(
   if (error is PostgrestException) {
     final code = error.code ?? '';
     final message = error.message;
+    if (code == '42501' || message.contains('permission denied')) {
+      return isSv
+          ? 'Behörighet saknas för åtgärden'
+          : 'Permission denied for this action';
+    }
     if (message == 'invite_full') {
       return isSv ? 'Inbjudan är full' : 'Invite is full';
     }

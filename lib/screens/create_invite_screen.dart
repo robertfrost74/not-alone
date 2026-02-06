@@ -20,6 +20,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
   String _energy = 'medium';
   String _talkLevel = 'low';
   int _duration = 20;
+  double _radiusKm = 20;
   late DateTime _meetingTime;
   late TextEditingController _placeController;
   bool _saving = false;
@@ -141,7 +142,7 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
         'lat': widget.appState.currentLat,
         'lon': widget.appState.currentLon,
         'city': city,
-        'radius_km': 20,
+        'radius_km': _radiusKm.round(),
         'status': 'open',
       });
 
@@ -285,6 +286,36 @@ class _CreateInviteScreenState extends State<CreateInviteScreen> {
                           label: '$_duration min',
                           onChanged: (value) =>
                               setState(() => _duration = value.round()),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _SectionTitle(title: _t('Radius', 'Radie')),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white24),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_radiusKm.round()} km',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        Slider(
+                          min: 1,
+                          max: 50,
+                          divisions: 49,
+                          value: _radiusKm,
+                          label: '${_radiusKm.round()} km',
+                          onChanged: (value) =>
+                              setState(() => _radiusKm = value),
                         ),
                       ],
                     ),

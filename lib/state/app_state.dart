@@ -21,6 +21,9 @@ class AppState extends ChangeNotifier {
   double? get currentLat => _currentLat;
   double? get currentLon => _currentLon;
   String? get city => _city;
+  bool get hasLocationOrCity =>
+      (_currentLat != null && _currentLon != null) ||
+      (_city != null && _city!.isNotEmpty);
 
   void setLocale(Locale locale) {
     _locale = locale;

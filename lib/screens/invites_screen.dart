@@ -82,7 +82,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
     _startRealtime();
     _initLocation();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      if (_realtimeFailed) _reloadInvites();
+      setState(() {});
     });
   }
 
@@ -951,6 +953,41 @@ class _InvitesScreenState extends State<InvitesScreen> {
                           }
 
                           final allItems = snap.data ?? [];
+                          final hasLocationOrCity =
+                              widget.appState.hasLocationOrCity;
+                          if (allItems.isEmpty && !hasLocationOrCity) {
+                            return Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _t(
+                                      'Add your city or enable location to see nearby invites.',
+                                      'Lägg till stad eller aktivera plats för att se inbjudningar.',
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  FilledButton(
+                                    onPressed: () {
+                                      context.pushSafe(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              ProfileScreen(appState: widget.appState),
+                                        ),
+                                      );
+                                    },
+                                    child: Text(_t('Set city', 'Ange stad')),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                           final currentUserId =
                               Supabase.instance.client.auth.currentUser?.id ?? '';
                           final activityFiltered =
