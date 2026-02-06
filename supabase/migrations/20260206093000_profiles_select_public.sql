@@ -1,5 +1,7 @@
 alter table if exists public.profiles enable row level security;
 
-create policy if not exists "profiles_select_public" on public.profiles
+drop policy if exists "profiles_select_public" on public.profiles;
+
+create policy "profiles_select_public" on public.profiles
 for select
 using (true);
