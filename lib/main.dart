@@ -38,9 +38,24 @@ class NotAloneApp extends StatefulWidget {
 
 class _NotAloneAppState extends State<NotAloneApp> {
   final _appState = AppState();
+  late final VoidCallback _localeListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _localeListener = () {
+      final locale = WidgetsBinding.instance.platformDispatcher.locale;
+      _appState.setLocale(locale);
+    };
+    WidgetsBinding.instance.platformDispatcher.onLocaleChanged = _localeListener;
+  }
 
   @override
   void dispose() {
+    if (WidgetsBinding.instance.platformDispatcher.onLocaleChanged ==
+        _localeListener) {
+      WidgetsBinding.instance.platformDispatcher.onLocaleChanged = null;
+    }
     _appState.dispose();
     super.dispose();
   }
