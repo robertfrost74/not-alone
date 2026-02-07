@@ -27,6 +27,48 @@ List<Map<String, dynamic>> preserveInvitesWithCache({
   }
   if (cachedInvites.isEmpty) return freshInvites;
 
+  final cachedById = <String, Map<String, dynamic>>{};
+  for (final cached in cachedInvites) {
+    final id = cached['id']?.toString();
+    if (id == null || id.isEmpty) continue;
+    cachedById[id] = cached;
+  }
+
+  // Preserve joined state for the same invite ids when backend temporarily drops it.
+  for (final fresh in freshInvites) {
+    final id = fresh['id']?.toString();
+    if (id == null || id.isEmpty) continue;
+    final cached = cachedById[id];
+    if (cached == null || !isJoinedInvite(cached)) continue;
+    if (fresh['joined_by_current_user'] != true) {
+      fresh['joined_by_current_user'] = true;
+    }
+    if (currentUserId.isEmpty) continue;
+    final freshMembers =
+        (fresh['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    final hasMember = freshMembers.any((member) =>
+        member['user_id']?.toString() == currentUserId &&
+        member['status']?.toString() != 'cannot_attend');
+    if (!hasMember) {
+      final cachedMembers =
+          (cached['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+              const [];
+      final cachedMember = cachedMembers.firstWhere(
+        (member) =>
+            member['user_id']?.toString() == currentUserId &&
+            member['status']?.toString() != 'cannot_attend',
+        orElse: () => const {},
+      );
+      if (cachedMember.isNotEmpty) {
+        fresh['invite_members'] = <Map<String, dynamic>>[
+          ...freshMembers,
+          Map<String, dynamic>.from(cachedMember),
+        ];
+      }
+    }
+  }
+
   final freshIds = freshInvites
       .map((invite) => invite['id']?.toString())
       .whereType<String>()

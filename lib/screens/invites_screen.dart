@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../state/app_state.dart';
 import '../state/invites_store.dart';
 import '../services/invites_repository.dart';
@@ -55,10 +56,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _menuLoading = false;
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
+  Timer? _authRetryTimer;
+  Timer? _authSignedOutTimer;
   StreamSubscription<AuthState>? _authSub;
   RealtimeChannel? _invitesChannel;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
+  String? _lastBucketLog;
+  bool _explicitSignOut = false;
+  String _lastPersistedUserId = '';
+  static const int _authRetryMax = 10;
+  int _authRetryCount = 0;
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
 
@@ -235,6 +243,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
   void dispose() {
     _clockTimer?.cancel();
     _realtimeDebounceTimer?.cancel();
+    _authRetryTimer?.cancel();
+    _authSignedOutTimer?.cancel();
     _authSub?.cancel();
     final channel = _invitesChannel;
     if (channel != null) {
@@ -350,6 +360,16 @@ class _InvitesScreenState extends State<InvitesScreen> {
   void _startAuthSync() {
     if (widget.testLoadInvites != null) return;
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      if (event.event == AuthChangeEvent.signedOut) {
+        // Supabase can emit transient signedOut during session refresh.
+        _authSignedOutTimer?.cancel();
+        _authSignedOutTimer = Timer(const Duration(milliseconds: 400), () {
+          if (!mounted) return;
+          _syncCurrentUserId(reloadIfChanged: true);
+        });
+        return;
+      }
+      _authSignedOutTimer?.cancel();
       _syncCurrentUserId(
         candidateUserId:
             event.session?.user.id ?? Supabase.instance.client.auth.currentUser?.id,
@@ -363,19 +383,85 @@ class _InvitesScreenState extends State<InvitesScreen> {
     required bool reloadIfChanged,
   }) {
     final nextUserId = candidateUserId ?? _currentUserId ?? '';
-    if (nextUserId == _stableCurrentUserId) return;
-    _stableCurrentUserId = nextUserId;
-    _cachedInvites = [];
-    _cachedInvitesUserId = '';
-    _optimisticJoinedInviteIds.clear();
-    _optimisticMemberIds.clear();
     if (nextUserId.isEmpty) {
-      if (mounted) {
-        setState(() => _invitesFuture = Future.value(const []));
+      if (_explicitSignOut) {
+        _store.clearUserScopedState();
+        _cachedInvitesUserId = '';
+        if (mounted) {
+          setState(() {
+            _invitesFuture = Future.value(const []);
+          });
+        }
+        return;
+      }
+      if (reloadIfChanged && _authRetryCount < _authRetryMax) {
+        _authRetryCount += 1;
+        _authRetryTimer?.cancel();
+        _authRetryTimer = Timer(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+          _syncCurrentUserId(reloadIfChanged: true);
+        });
       }
       return;
     }
+    _explicitSignOut = false;
+    if (_lastPersistedUserId != nextUserId) {
+      _lastPersistedUserId = nextUserId;
+      _loadPersistedJoinedIds(nextUserId);
+    }
+    if (_stableCurrentUserId.isEmpty) {
+      _stableCurrentUserId = nextUserId;
+      _authRetryCount = 0;
+      if (reloadIfChanged) _reloadInvites();
+      return;
+    }
+    if (nextUserId == _stableCurrentUserId) return;
+    _stableCurrentUserId = nextUserId;
+    _store.clearUserScopedState();
+    _cachedInvitesUserId = '';
+    _authRetryCount = 0;
     if (reloadIfChanged) _reloadInvites();
+  }
+
+  Future<void> _loadPersistedJoinedIds(String userId) async {
+    if (userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList('joined_invites_$userId') ?? const [];
+      _optimisticJoinedInviteIds
+        ..clear()
+        ..addAll(ids);
+      if (mounted) {
+        setState(() {
+          _invitesFuture = _loadInvites();
+        });
+      }
+    } catch (_) {
+      // Ignore persistence failures.
+    }
+  }
+
+  Future<void> _persistJoinedIds(String userId) async {
+    if (userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'joined_invites_$userId',
+        _optimisticJoinedInviteIds.toList(growable: false),
+      );
+    } catch (_) {
+      // Ignore persistence failures.
+    }
+  }
+
+  Future<void> _clearPersistedJoinedIds(String userId) async {
+    if (userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('joined_invites_$userId');
+    } catch (_) {
+      // Ignore persistence failures.
+    }
   }
 
   void _scheduleRealtimeReload() {
@@ -411,6 +497,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<void> _signOut() async {
     setState(() => _menuLoading = true);
     try {
+      _explicitSignOut = true;
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -500,6 +587,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
+    debugPrint(
+      '[Invites] load start user=${_effectiveCurrentUserId} city=${widget.appState.city} lat=${widget.appState.currentLat} lon=${widget.appState.currentLon}',
+    );
     try {
       final currentUserId = _effectiveCurrentUserId;
       final cacheOwnedByCurrentUser = _cachedInvitesUserId.isEmpty ||
@@ -518,24 +608,34 @@ class _InvitesScreenState extends State<InvitesScreen> {
         _cachedInvitesUserId = currentUserId;
         return invites;
       }
-      final firstFetch = (await _invitesRepository.fetchOpenInvitesTyped(
+      final firstFetch = await _invitesRepository.fetchOpenInvites(
         lat: widget.appState.currentLat,
         lon: widget.appState.currentLon,
         radiusKm: 20,
         city: widget.appState.city,
-      ))
-          .map((invite) => invite.toMap())
-          .toList(growable: false);
+      );
       var invites = firstFetch;
+      debugPrint('[Invites] fetch open count=${invites.length}');
+      if (currentUserId.isNotEmpty &&
+          invites.isNotEmpty &&
+          invites.every(
+            (invite) => invite['host_user_id']?.toString() == currentUserId,
+          )) {
+        // If nearby only returns my own invites (auth/location churn), fall back
+        // to raw open list to keep Andras populated.
+        final rawFallback = await _invitesRepository.fetchOpenInvitesRaw();
+        if (rawFallback.isNotEmpty) {
+          invites = rawFallback;
+          debugPrint('[Invites] fetch raw fallback count=${invites.length}');
+        }
+      }
       if (invites.isEmpty && widget.appState.city != null) {
-        invites = (await _invitesRepository.fetchOpenInvitesTyped(
+        invites = await _invitesRepository.fetchOpenInvites(
           lat: null,
           lon: null,
           radiusKm: 20,
           city: widget.appState.city,
-        ))
-            .map((invite) => invite.toMap())
-            .toList(growable: false);
+        );
       }
       if (mounted && _offline) {
         setState(() => _offline = false);
@@ -546,13 +646,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
         currentUserId: currentUserId,
         optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
       );
+      debugPrint('[Invites] after preserve count=${invites.length}');
 
       if (currentUserId.isNotEmpty) {
         try {
           final joinedInvites =
-              (await _invitesRepository.fetchJoinedInvitesForUserTyped(currentUserId))
-                  .map((invite) => invite.toMap())
-                  .toList(growable: false);
+              await _invitesRepository.fetchJoinedInvitesForUser(currentUserId);
+          debugPrint('[Invites] joined fetch count=${joinedInvites.length}');
           if (joinedInvites.isNotEmpty) {
             invites = mergeInvitesById(
               baseInvites: invites,
@@ -658,12 +758,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
         invite['group_name'] = (group?['name'] ?? '').toString();
       }
       if (invites.isEmpty && _cachedInvites.isNotEmpty) {
+        debugPrint(
+          '[Invites] empty result, returning cached count=${_cachedInvites.length}',
+        );
         return _cachedInvites;
       }
       _cachedInvites = invites;
       _cachedInvitesUserId = currentUserId;
+      debugPrint('[Invites] load done count=${invites.length}');
       return invites;
     } catch (e) {
+      debugPrint('[Invites] load error: $e');
       if (mounted) {
         setState(() => _offline = isNetworkError(e));
       }
@@ -848,6 +953,27 @@ class _InvitesScreenState extends State<InvitesScreen> {
               params: {'invite_id': inviteId},
             ))
               ?.toString();
+      if (widget.testJoinInvite == null &&
+          inviteMemberId != null &&
+          inviteMemberId.isNotEmpty) {
+        try {
+          final verify = await Supabase.instance.client
+              .from('invite_members')
+              .select('id, status')
+              .eq('id', inviteMemberId)
+              .maybeSingle();
+          if (verify != null &&
+              verify['status']?.toString() == 'cannot_attend') {
+            await Supabase.instance.client
+                .from('invite_members')
+                .update({'status': 'accepted'})
+                .eq('id', inviteMemberId);
+            debugPrint('[Invites] join status fixed to accepted');
+          }
+        } catch (e) {
+          debugPrint('[Invites] join verify failed: $e');
+        }
+      }
       if (inviteMemberId == null || inviteMemberId.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -864,6 +990,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       _optimisticJoinedInviteIds.add(inviteId);
       _optimisticMemberIds[inviteId] = inviteMemberId;
       invite['joined_by_current_user'] = true;
+      await _persistJoinedIds(_effectiveCurrentUserId);
       setState(() {});
       _restoreTabIndex(tabIndex);
     } catch (e) {
@@ -1732,6 +1859,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           if (cached['id']?.toString() != inviteId) continue;
           markLeft(cached);
         }
+        await _persistJoinedIds(currentUserId);
       }
       if (!mounted) return;
       setState(() {});
@@ -2106,6 +2234,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             optimisticJoinedIds: _optimisticJoinedInviteIds,
                             matchesAudience: _matchesAudience,
                           );
+                          final bucketLog =
+                              '[Invites] buckets all=${allItems.length} activity=${_activity} filtered=${activityFiltered.length} forMe=${buckets.invitesForMe.length} my=${buckets.myInvites.length} joined=${buckets.joinedInvites.length} group=${buckets.groupInvites.length} hasLocationOrCity=$hasLocationOrCity';
+                          if (_lastBucketLog != bucketLog) {
+                            _lastBucketLog = bucketLog;
+                            debugPrint(bucketLog);
+                          }
 
                           return Column(
                             children: [
