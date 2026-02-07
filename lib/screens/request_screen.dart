@@ -561,7 +561,7 @@ class _RequestScreenState extends State<RequestScreen> {
       );
       if (!approved || !mounted) return;
 
-      await _createOpenInvite(
+      final createdInviteId = await _createOpenInvite(
         activity: activityValue,
         duration: _durationMin.round(),
         meetingTime: meetingTime,
@@ -575,7 +575,35 @@ class _RequestScreenState extends State<RequestScreen> {
       );
 
       if (!mounted) return;
-      context.pushNamedAndRemoveUntilSafe('/invites', (route) => false);
+      final createdInvite = <String, dynamic>{
+        'id': createdInviteId,
+        'host_user_id': user.id,
+        'activity': activityValue,
+        'mode': mode,
+        'max_participants': mode == 'group' ? _participantCount : null,
+        'duration': _durationMin.round(),
+        'meeting_time': meetingTime.toIso8601String(),
+        'place': place,
+        'created_at': DateTime.now().toIso8601String(),
+        'invite_members': <Map<String, dynamic>>[],
+        'accepted_count': 0,
+        'group_id': _selectedGroupId,
+        'groups': _selectedGroupName == null
+            ? null
+            : <String, dynamic>{'name': _selectedGroupName},
+        'group_name': _selectedGroupName ?? '',
+        'target_gender': _targetGender,
+        'age_min': _ageRange.start.round(),
+        'age_max': _ageRange.end.round(),
+      };
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop({
+          'created': true,
+          'invite': createdInvite,
+        });
+      } else {
+        context.pushNamedAndRemoveUntilSafe('/invites', (route) => false);
+      }
     } on PostgrestException catch (e) {
       if (!mounted) return;
       final message = mapSupabaseError(

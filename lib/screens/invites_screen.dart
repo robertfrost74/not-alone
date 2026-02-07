@@ -209,6 +209,44 @@ class _InvitesScreenState extends State<InvitesScreen> {
     });
   }
 
+  void _applyCreatedInvite(Map<String, dynamic> invite) {
+    final normalized = Map<String, dynamic>.from(invite);
+    final id = normalized['id']?.toString();
+    if (id == null || id.isEmpty) return;
+
+    final currentUserId = _effectiveCurrentUserId;
+    normalized['accepted_count'] = computeAcceptedCount(
+      members: (normalized['invite_members'] as List?)
+              ?.cast<Map<String, dynamic>>() ??
+          const [],
+      inviteId: id,
+      optimisticJoinedIds: _optimisticJoinedInviteIds,
+      currentUserId: currentUserId,
+    );
+
+    final username = (_currentUserMetadata?['username'] ?? '').toString().trim();
+    if (username.isNotEmpty) {
+      normalized['host_display_name'] = username;
+    } else if ((normalized['host_display_name'] ?? '').toString().isEmpty) {
+      normalized['host_display_name'] = _t('You', 'Du');
+    }
+
+    final group = normalized['groups'] as Map<String, dynamic>?;
+    normalized['group_name'] = (group?['name'] ?? normalized['group_name'] ?? '')
+        .toString();
+
+    final next = _cachedInvites
+        .where((it) => it['id']?.toString() != id)
+        .toList(growable: true)
+      ..insert(0, normalized);
+
+    _cachedInvites = next;
+    if (!mounted) return;
+    setState(() {
+      _invitesFuture = Future.value(next);
+    });
+  }
+
   void _startRealtime() {
     if (widget.testLoadInvites != null) return;
     try {
@@ -1709,13 +1747,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
                       width: double.infinity,
                       height: 48,
                       child: OutlinedButton(
-                        onPressed: () {
-                          context.pushSafe(
+                        onPressed: () async {
+                          final result = await context.pushSafe<Object?>(
                             MaterialPageRoute(
                               builder: (_) =>
                                   RequestScreen(appState: widget.appState),
                             ),
                           );
+                          final payload = result is Map
+                              ? Map<String, dynamic>.from(result)
+                              : null;
+                          final created = result == true ||
+                              (payload?['created'] == true);
+                          final createdInvite = payload?['invite'];
+
+                          if (created == true && mounted) {
+                            if (createdInvite is Map<String, dynamic>) {
+                              _applyCreatedInvite(createdInvite);
+                            } else {
+                              _reloadInvites();
+                            }
+                            scheduleTabSwitch(tabRootKey: _tabRootKey, index: 1);
+                          }
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
