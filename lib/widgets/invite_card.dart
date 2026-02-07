@@ -288,6 +288,7 @@ class InviteCard extends StatelessWidget {
               onPressed: joinEnabled ? onJoin : null,
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white70,
               ),
               child: Text(joinButtonLabel),
             ),

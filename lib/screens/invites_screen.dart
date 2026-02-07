@@ -7,6 +7,10 @@ import '../services/invite_status.dart';
 import '../services/error_mapper.dart';
 import '../services/location_service.dart';
 import '../services/profile_completion.dart';
+import '../services/join_ui.dart';
+import '../services/invite_buckets.dart';
+import '../services/tab_switcher.dart';
+import '../services/invite_counts.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -21,14 +25,29 @@ import '../widgets/nav_helper.dart';
 
 class InvitesScreen extends StatefulWidget {
   final AppState appState;
-  const InvitesScreen({super.key, required this.appState});
+  final String? testCurrentUserId;
+  final Map<String, dynamic>? testCurrentUserMetadata;
+  final Future<List<Map<String, dynamic>>> Function()? testLoadInvites;
+  final Future<String?> Function(String inviteId)? testJoinInvite;
+  final Future<void> Function(String inviteMemberId)? testLeaveInvite;
+
+  const InvitesScreen({
+    super.key,
+    required this.appState,
+    this.testCurrentUserId,
+    this.testCurrentUserMetadata,
+    this.testLoadInvites,
+    this.testJoinInvite,
+    this.testLeaveInvite,
+  });
 
   @override
   State<InvitesScreen> createState() => _InvitesScreenState();
 }
 
 class _InvitesScreenState extends State<InvitesScreen> {
-  bool _joining = false;
+  final GlobalKey _tabRootKey = GlobalKey();
+  String? _joiningInviteId;
   bool _menuLoading = false;
   late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
@@ -42,6 +61,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _realtimeFailed = false;
   Set<String> _blockedUserIds = {};
   Set<String> _favoriteUserIds = {};
+  final Set<String> _optimisticJoinedInviteIds = {};
+  final Map<String, String> _optimisticMemberIds = {};
+  List<Map<String, dynamic>> _cachedInvites = [];
+  String _stableCurrentUserId = '';
   DateTime? _lastJoinAttemptAt;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   static const Duration _joinCooldown = Duration(seconds: 2);
@@ -52,8 +75,24 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool get isSv => widget.appState.isSv;
   String _t(String en, String sv) => widget.appState.t(en, sv);
 
+  String? get _currentUserId =>
+      widget.testCurrentUserId ??
+      Supabase.instance.client.auth.currentUser?.id;
+
+  Map<String, dynamic>? get _currentUserMetadata =>
+      widget.testCurrentUserMetadata ??
+      Supabase.instance.client.auth.currentUser?.userMetadata;
+
+  String get _effectiveCurrentUserId {
+    final current = _currentUserId;
+    if (current != null && current.isNotEmpty) {
+      _stableCurrentUserId = current;
+    }
+    return _stableCurrentUserId;
+  }
+
   int? get _currentUserAge {
-    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final metadata = _currentUserMetadata;
     if (metadata == null) return null;
     final raw = metadata['age'];
     if (raw is int) return raw;
@@ -70,7 +109,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   String? get _currentUserGender {
-    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final metadata = _currentUserMetadata;
     if (metadata == null) return null;
     final raw = metadata['gender']?.toString() ?? '';
     final normalized = _normalizeGender(raw);
@@ -94,7 +133,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<bool> _ensureProfileCompleteForJoin() async {
-    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final metadata = _currentUserMetadata;
     final result = checkProfileCompletion(metadata);
     if (result.isComplete) return true;
 
@@ -139,6 +178,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   @override
   void initState() {
     super.initState();
+    _stableCurrentUserId = _currentUserId ?? '';
     _invitesFuture = _loadInvites();
     _startRealtime();
     _initLocation();
@@ -170,6 +210,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   void _startRealtime() {
+    if (widget.testLoadInvites != null) return;
     try {
       _invitesChannel = Supabase.instance.client
           .channel('public:invites_live')
@@ -201,6 +242,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<void> _initLocation() async {
+    if (widget.testLoadInvites != null) return;
     final metadataCity = (Supabase.instance.client.auth.currentUser?.userMetadata?['city'] ?? '')
         .toString()
         .trim();
@@ -314,6 +356,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
     try {
+      if (widget.testLoadInvites != null) {
+        final invites = await widget.testLoadInvites!.call();
+        _cachedInvites = invites;
+        return invites;
+      }
       var invites = await _invitesRepository.fetchOpenInvites(
         lat: widget.appState.currentLat,
         lon: widget.appState.currentLon,
@@ -331,10 +378,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (mounted && _offline) {
         setState(() => _offline = false);
       }
-      if (invites.isEmpty) return invites;
+      if (invites.isEmpty) {
+        _cachedInvites = invites;
+        return invites;
+      }
 
-      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-      if (currentUserId != null) {
+      final currentUserId = _effectiveCurrentUserId;
+      if (currentUserId.isNotEmpty) {
         final blockedIds = await _fetchBlockedUserIds(currentUserId);
         if (mounted) {
           setState(() => _blockedUserIds = blockedIds);
@@ -378,18 +428,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
         }
       }
 
-      final currentUser = Supabase.instance.client.auth.currentUser;
       final currentUsername =
-          (currentUser?.userMetadata?['username'] ?? '').toString().trim();
+          (_currentUserMetadata?['username'] ?? '').toString().trim();
       final currentDisplay = currentUsername.isNotEmpty ? currentUsername : '';
 
       for (final invite in invites) {
         final members =
             (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
                 const [];
-        invite['accepted_count'] = members
-            .where((member) => member['status']?.toString() != 'cannot_attend')
-            .length;
+        invite['accepted_count'] = computeAcceptedCount(
+          members: members,
+          inviteId: invite['id']?.toString(),
+          optimisticJoinedIds: _optimisticJoinedInviteIds,
+          currentUserId: currentUserId,
+        );
         final hostId = invite['host_user_id']?.toString() ?? '';
         final fallback = hostId.isEmpty
             ? _t('Unknown user', 'Okänd användare')
@@ -402,11 +454,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
         final group = invite['groups'] as Map<String, dynamic>?;
         invite['group_name'] = (group?['name'] ?? '').toString();
       }
+      _cachedInvites = invites;
       return invites;
     } catch (e) {
       if (mounted) {
         setState(() => _offline = isNetworkError(e));
       }
+      if (_cachedInvites.isNotEmpty) return _cachedInvites;
       return [];
     } finally {
       _loadingInvites = false;
@@ -571,14 +625,16 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
     if (!mounted) return;
     setState(() {
-      _joining = true;
+      _joiningInviteId = inviteId;
     });
     try {
-      final response = await Supabase.instance.client.rpc(
-        'join_invite',
-        params: {'invite_id': inviteId},
-      );
-      final inviteMemberId = response?.toString();
+      final inviteMemberId = widget.testJoinInvite != null
+          ? await widget.testJoinInvite!(inviteId)
+          : (await Supabase.instance.client.rpc(
+              'join_invite',
+              params: {'invite_id': inviteId},
+            ))
+              ?.toString();
       if (inviteMemberId == null || inviteMemberId.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -592,17 +648,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
       }
 
       if (!mounted) return;
-      await context.pushNamedSafe(
-        '/meet',
-        arguments: {
-          'invite_id': inviteId,
-          'invite_member_id': inviteMemberId,
-          'created_at': invite['created_at'],
-          'meeting_time': invite['meeting_time'],
-          'place': invite['place'],
-          'duration': invite['duration'],
-        },
-      );
+      _optimisticJoinedInviteIds.add(inviteId);
+      _optimisticMemberIds[inviteId] = inviteMemberId;
+      setState(() {});
     } catch (e) {
       if (!mounted) return;
       final message = mapSupabaseError(
@@ -617,7 +665,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     } finally {
       if (mounted) {
         setState(() {
-          _joining = false;
+          _joiningInviteId = null;
         });
       }
     }
@@ -626,10 +674,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<void> _editInvite(Map<String, dynamic> invite) async {
     final inviteId = invite['id']?.toString();
     final hostId = invite['host_user_id']?.toString();
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = _effectiveCurrentUserId;
     if (inviteId == null ||
         inviteId.isEmpty ||
-        userId == null ||
+        userId.isEmpty ||
         hostId != userId) {
       return;
     }
@@ -696,8 +744,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           .from('meetups')
           .delete()
           .match({'invite_id': inviteId});
-      await Supabase.instance.client
-          .rpc('soft_delete_invite', params: {'invite_id': inviteId});
+      await _softDeleteInvite(inviteId);
       if (!mounted) return;
       _reloadInvites();
     } catch (e) {
@@ -706,6 +753,11 @@ class _InvitesScreenState extends State<InvitesScreen> {
         SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
       );
     }
+  }
+
+  Future<void> _softDeleteInvite(String inviteId) async {
+    await Supabase.instance.client
+        .rpc('soft_delete_invite', params: {'p_invite_id': inviteId});
   }
 
   Future<void> _showInviteActions(Map<String, dynamic> invite) async {
@@ -1234,7 +1286,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   String _joinedOfMaxLabel(Map<String, dynamic> invite) {
-    final accepted = (invite['accepted_count'] as int?) ?? 0;
+    final accepted = _acceptedCount(invite);
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
     final maxParticipants =
@@ -1287,7 +1339,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   InviteStatus _inviteStatus(Map<String, dynamic> invite) {
     final meetingAt = _parseDateTime(invite['meeting_time']);
-    final accepted = (invite['accepted_count'] as int?) ?? 0;
+    final accepted = _acceptedCount(invite);
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
     final maxParticipants =
@@ -1297,6 +1349,18 @@ class _InvitesScreenState extends State<InvitesScreen> {
       accepted: accepted,
       mode: mode,
       maxParticipants: maxParticipants,
+    );
+  }
+
+  int _acceptedCount(Map<String, dynamic> invite) {
+    final members =
+        (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    return computeAcceptedCount(
+      members: members,
+      inviteId: invite['id']?.toString(),
+      optimisticJoinedIds: _optimisticJoinedInviteIds,
+      currentUserId: _effectiveCurrentUserId,
     );
   }
 
@@ -1344,6 +1408,83 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  bool _isJoinedByCurrentUser(Map<String, dynamic> invite) {
+    final currentUserId = _effectiveCurrentUserId;
+    if (currentUserId.isEmpty) return false;
+    final members =
+        (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    final joined = members.any((m) =>
+        m['user_id']?.toString() == currentUserId &&
+        m['status']?.toString() != 'cannot_attend');
+    if (joined) return true;
+    final inviteId = invite['id']?.toString();
+    return inviteId != null && _optimisticJoinedInviteIds.contains(inviteId);
+  }
+
+  String? _currentMemberId(Map<String, dynamic> invite) {
+    final currentUserId = _effectiveCurrentUserId;
+    if (currentUserId.isEmpty) return null;
+    final members =
+        (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    for (final m in members) {
+      if (m['user_id']?.toString() == currentUserId &&
+          m['status']?.toString() != 'cannot_attend') {
+        return m['id']?.toString();
+      }
+    }
+    final inviteId = invite['id']?.toString();
+    if (inviteId != null) {
+      return _optimisticMemberIds[inviteId];
+    }
+    return null;
+  }
+
+  Future<void> _leaveInvite(Map<String, dynamic> invite) async {
+    final inviteId = invite['id']?.toString();
+    final memberId = _currentMemberId(invite);
+    if (inviteId == null || inviteId.isEmpty || memberId == null) return;
+    try {
+      if (widget.testLeaveInvite != null) {
+        await widget.testLeaveInvite!(memberId);
+      } else {
+        await Supabase.instance.client.rpc(
+          'leave_invite',
+          params: {'invite_member_id': memberId},
+        );
+      }
+      _optimisticJoinedInviteIds.remove(inviteId);
+      _optimisticMemberIds.remove(inviteId);
+      final currentUserId = _effectiveCurrentUserId;
+      if (currentUserId.isNotEmpty) {
+        void markLeft(Map<String, dynamic> target) {
+          final members =
+              (target['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+                  const [];
+          for (final member in members) {
+            if (member['user_id']?.toString() == currentUserId) {
+              member['status'] = 'cannot_attend';
+            }
+          }
+        }
+
+        markLeft(invite);
+        for (final cached in _cachedInvites) {
+          if (cached['id']?.toString() != inviteId) continue;
+          markLeft(cached);
+        }
+      }
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+      );
+    }
+  }
+
   Widget _buildInviteCard(BuildContext context, Map<String, dynamic> it) {
     final place = (it['place'] ?? '').toString();
     final meetingTimeLabel = _formatDateTime(it['meeting_time']);
@@ -1351,11 +1492,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
         _timeLeftProgress(it['created_at'], it['meeting_time']);
     final timeLeftLabel = _timeLeftLabel(it['meeting_time']);
     final status = _inviteStatus(it);
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final inviteId = it['id']?.toString();
+    final currentUserId = _effectiveCurrentUserId;
     final hostId = it['host_user_id']?.toString();
     final canDelete = hostId != null && hostId == currentUserId;
     final canShowActions =
         hostId != null && hostId.isNotEmpty && hostId != currentUserId;
+    final isJoined = _isJoinedByCurrentUser(it);
     final groupName = (it['group_name'] ?? '').toString().trim();
     final genderNormalized =
         _normalizeGender((it['target_gender'] ?? 'all').toString());
@@ -1375,6 +1518,23 @@ class _InvitesScreenState extends State<InvitesScreen> {
         : genderNormalized == 'male'
             ? _t('Men', 'Män')
             : _t('Women', 'Kvinnor');
+
+    final joinUi = computeJoinUiState(
+      inviteId: inviteId,
+      joiningInviteId: _joiningInviteId,
+      canJoin: _canJoinStatus(status),
+      isJoinCooldownActive: _isJoinCooldownActive,
+      isSv: isSv,
+      defaultLabel: isJoined ? _t('Leave', 'Lämna') : _joinButtonLabel(status),
+    );
+
+    final isHostInvite = canDelete;
+    final joinButtonLabel =
+        isHostInvite ? _t('Delete', 'Radera') : joinUi.label;
+    final onJoinAction = isHostInvite
+        ? () => _deleteInvite(it)
+        : () => isJoined ? _leaveInvite(it) : _joinInvite(it);
+    final joinEnabled = isHostInvite ? true : (isJoined ? true : joinUi.enabled);
 
     return InviteCard(
       activityLabel: _activityLabel(it['activity']),
@@ -1396,9 +1556,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
       groupName: groupName.isEmpty ? null : groupName,
       groupLabel: groupLabel,
       genderTag: genderTag,
-      joinEnabled: !_joining && _canJoinStatus(status) && !_isJoinCooldownActive,
-      joinButtonLabel: _joinButtonLabel(status),
-      onJoin: () => _joinInvite(it),
+      joinEnabled: joinEnabled,
+      joinButtonLabel: joinButtonLabel,
+      onJoin: onJoinAction,
       onShowJoined: () => _showAcceptedUsersModal(it),
       onMore: canShowActions ? () => _showInviteActions(it) : null,
     );
@@ -1541,9 +1701,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
           child: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: SocialPanel(
-                child: Column(
-                  children: [
+                child: SocialPanel(
+                  child: Column(
+                    key: _tabRootKey,
+                    children: [
                     SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -1586,7 +1747,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (_joining) const LinearProgressIndicator(),
+                    if (_joiningInviteId != null)
+                      const LinearProgressIndicator(),
                     const SizedBox(height: 12),
                     Expanded(
                       child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -1636,48 +1798,17 @@ class _InvitesScreenState extends State<InvitesScreen> {
                               ),
                             );
                           }
-                          final currentUserId =
-                              Supabase.instance.client.auth.currentUser?.id ?? '';
+                          final currentUserId = _effectiveCurrentUserId;
                           final activityFiltered =
                               allItems.where(_matchesActivityFilter).toList();
                           final hasAnyInvites = allItems.isNotEmpty;
 
-                          final joinedInvites = activityFiltered.where((it) {
-                            final members =
-                                (it['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
-                                    const [];
-                            return members.any((m) =>
-                                m['user_id']?.toString() == currentUserId &&
-                                m['status']?.toString() != 'cannot_attend');
-                          }).toList();
-
-                          final myInvites = activityFiltered
-                              .where((it) =>
-                                  it['host_user_id']?.toString() ==
-                                  currentUserId)
-                              .toList();
-
-                          final joinedInviteIds =
-                              joinedInvites.map((it) => it['id']?.toString()).toSet();
-
-                          final invitesForMe = activityFiltered.where((it) {
-                            final hostId = it['host_user_id']?.toString();
-                            if (hostId == currentUserId) return false;
-                            final id = it['id']?.toString();
-                            if (id != null && joinedInviteIds.contains(id)) return false;
-                            final groupId = it['group_id']?.toString();
-                            if (groupId != null && groupId.isNotEmpty) return false;
-                            return _matchesAudience(it);
-                          }).toList();
-
-                          final groupInvites = activityFiltered.where((it) {
-                            final groupId = it['group_id']?.toString();
-                            if (groupId == null || groupId.isEmpty) return false;
-                            if (it['host_user_id']?.toString() == currentUserId) {
-                              return true;
-                            }
-                            return _matchesAudience(it);
-                          }).toList();
+                          final buckets = bucketInvites(
+                            activityFiltered: activityFiltered,
+                            currentUserId: currentUserId,
+                            optimisticJoinedIds: _optimisticJoinedInviteIds,
+                            matchesAudience: _matchesAudience,
+                          );
 
                           return Column(
                             children: [
@@ -1708,28 +1839,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                 child: TabBarView(
                                   children: [
                                     InviteList(
-                                      items: invitesForMe,
+                                      items: buckets.invitesForMe,
                                       emptyLabel: isSv
                                           ? 'Inga inbjudningar för filtret'
                                           : 'No invites for this filter',
                                       itemBuilder: _buildInviteCard,
                                     ),
                                     InviteList(
-                                      items: myInvites,
+                                      items: buckets.myInvites,
                                       emptyLabel: isSv
                                           ? 'Inga inbjudningar för filtret'
                                           : 'No invites for this filter',
                                       itemBuilder: _buildInviteCard,
                                     ),
                                     InviteList(
-                                      items: joinedInvites,
+                                      items: buckets.joinedInvites,
                                       emptyLabel: isSv
                                           ? 'Inga inbjudningar för filtret'
                                           : 'No invites for this filter',
                                       itemBuilder: _buildInviteCard,
                                     ),
                                     InviteList(
-                                      items: groupInvites,
+                                      items: buckets.groupInvites,
                                       emptyLabel: isSv
                                           ? 'Inga inbjudningar för filtret'
                                           : 'No invites for this filter',
