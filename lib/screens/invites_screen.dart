@@ -518,20 +518,24 @@ class _InvitesScreenState extends State<InvitesScreen> {
         _cachedInvitesUserId = currentUserId;
         return invites;
       }
-      final firstFetch = await _invitesRepository.fetchOpenInvites(
+      final firstFetch = (await _invitesRepository.fetchOpenInvitesTyped(
         lat: widget.appState.currentLat,
         lon: widget.appState.currentLon,
         radiusKm: 20,
         city: widget.appState.city,
-      );
+      ))
+          .map((invite) => invite.toMap())
+          .toList(growable: false);
       var invites = firstFetch;
       if (invites.isEmpty && widget.appState.city != null) {
-        invites = await _invitesRepository.fetchOpenInvites(
+        invites = (await _invitesRepository.fetchOpenInvitesTyped(
           lat: null,
           lon: null,
           radiusKm: 20,
           city: widget.appState.city,
-        );
+        ))
+            .map((invite) => invite.toMap())
+            .toList(growable: false);
       }
       if (mounted && _offline) {
         setState(() => _offline = false);
@@ -546,7 +550,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (currentUserId.isNotEmpty) {
         try {
           final joinedInvites =
-              await _invitesRepository.fetchJoinedInvitesForUser(currentUserId);
+              (await _invitesRepository.fetchJoinedInvitesForUserTyped(currentUserId))
+                  .map((invite) => invite.toMap())
+                  .toList(growable: false);
           if (joinedInvites.isNotEmpty) {
             invites = mergeInvitesById(
               baseInvites: invites,

@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:not_alone/models/invite.dart';
 import 'package:not_alone/services/invites_repository.dart';
 
 class _TestInvitesRepository extends InvitesRepository {
   int calls = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({
+  Future<List<Invite>> fetchOpenInvitesNearbyTyped({
     int limit = 50,
     double? lat,
     double? lon,
@@ -16,13 +17,12 @@ class _TestInvitesRepository extends InvitesRepository {
     if (calls == 1) {
       throw Exception('SocketException: failed');
     }
-    return [];
+    return const [];
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesRaw(
-      {int limit = 50}) async {
-    return [];
+  Future<List<Invite>> fetchOpenInvitesRawTyped({int limit = 50}) async {
+    return const [];
   }
 }
 
@@ -31,7 +31,7 @@ class _FallbackInvitesRepository extends InvitesRepository {
   int rawCalls = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({
+  Future<List<Invite>> fetchOpenInvitesNearbyTyped({
     int limit = 50,
     double? lat,
     double? lon,
@@ -39,15 +39,33 @@ class _FallbackInvitesRepository extends InvitesRepository {
     String? city,
   }) async {
     nearbyCalls += 1;
-    return [];
+    return const [];
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesRaw(
-      {int limit = 50}) async {
+  Future<List<Invite>> fetchOpenInvitesRawTyped({int limit = 50}) async {
     rawCalls += 1;
-    return [
-      {'id': 'fallback-invite'}
+    return const [
+      Invite(
+        id: 'fallback-invite',
+        hostUserId: null,
+        maxParticipants: null,
+        targetGender: null,
+        ageMin: null,
+        ageMax: null,
+        createdAt: null,
+        activity: null,
+        mode: null,
+        energy: null,
+        talkLevel: null,
+        duration: null,
+        place: null,
+        meetingTime: null,
+        groupId: null,
+        groupName: '',
+        inviteMembers: [],
+        joinedByCurrentUser: false,
+      )
     ];
   }
 }
@@ -78,14 +96,30 @@ class _JoinedPagingRepository extends InvitesRepository {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchInvitesByIds(Set<String> inviteIds) async {
+  Future<List<Invite>> fetchInvitesByIdsTyped(Set<String> inviteIds) async {
     invitesByIdCalls += 1;
     return inviteIds
-        .map((id) => {
-              'id': id,
-              'created_at': DateTime(2026, 2, 7, 10, inviteIds.length).toIso8601String(),
-              'invite_members': const [],
-            })
+        .map((id) => Invite(
+              id: id,
+              hostUserId: null,
+              maxParticipants: null,
+              targetGender: null,
+              ageMin: null,
+              ageMax: null,
+              createdAt:
+                  DateTime(2026, 2, 7, 10, inviteIds.length).toIso8601String(),
+              activity: null,
+              mode: null,
+              energy: null,
+              talkLevel: null,
+              duration: null,
+              place: null,
+              meetingTime: null,
+              groupId: null,
+              groupName: '',
+              inviteMembers: const [],
+              joinedByCurrentUser: false,
+            ))
         .toList();
   }
 }

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/invite.dart';
 import 'error_mapper.dart';
 import 'retry.dart';
 
@@ -9,8 +10,27 @@ class InvitesRepository {
   InvitesRepository({SupabaseClient? client}) : _clientOverride = client;
 
   SupabaseClient get _client => _clientOverride ?? Supabase.instance.client;
+  static const String _inviteSelect =
+      'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)';
 
-  Future<List<Map<String, dynamic>>> fetchOpenInvites({
+  List<Map<String, dynamic>> _toMapList(List<Invite> invites) =>
+      invites.map((invite) => invite.toMap()).toList(growable: false);
+
+  List<Invite> _toInviteList(List<dynamic> rows, {bool joined = false}) {
+    final invites = <Invite>[];
+    for (final row in rows) {
+      if (row is Map<String, dynamic>) {
+        invites.add(Invite.fromMap(row, joinedByCurrentUser: joined));
+      } else if (row is Map) {
+        invites.add(
+          Invite.fromMap(Map<String, dynamic>.from(row), joinedByCurrentUser: joined),
+        );
+      }
+    }
+    return invites;
+  }
+
+  Future<List<Invite>> fetchOpenInvitesTyped({
     int limit = 50,
     double? lat,
     double? lon,
@@ -19,7 +39,7 @@ class InvitesRepository {
   }) async {
     return withRetry(
       () async {
-        final nearby = await fetchOpenInvitesNearby(
+        final nearby = await fetchOpenInvitesNearbyTyped(
           limit: limit,
           lat: lat,
           lon: lon,
@@ -27,25 +47,46 @@ class InvitesRepository {
           city: city,
         );
         if (nearby.isNotEmpty) return nearby;
-        return fetchOpenInvitesRaw(limit: limit);
+        return fetchOpenInvitesRawTyped(limit: limit);
       },
       shouldRetry: isNetworkError,
     );
   }
 
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesRaw(
-      {int limit = 50}) async {
+  Future<List<Map<String, dynamic>>> fetchOpenInvites({
+    int limit = 50,
+    double? lat,
+    double? lon,
+    int radiusKm = 20,
+    String? city,
+  }) async {
+    final invites = await fetchOpenInvitesTyped(
+      limit: limit,
+      lat: lat,
+      lon: lon,
+      radiusKm: radiusKm,
+      city: city,
+    );
+    return _toMapList(invites);
+  }
+
+  Future<List<Invite>> fetchOpenInvitesRawTyped({int limit = 50}) async {
     final res = await _client
         .from('invites')
-        .select(
-            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)')
+        .select(_inviteSelect)
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(limit);
-    return (res as List).cast<Map<String, dynamic>>();
+    return _toInviteList((res as List));
   }
 
-  Future<List<Map<String, dynamic>>> fetchJoinedInvitesForUser(
+  Future<List<Map<String, dynamic>>> fetchOpenInvitesRaw(
+      {int limit = 50}) async {
+    final invites = await fetchOpenInvitesRawTyped(limit: limit);
+    return _toMapList(invites);
+  }
+
+  Future<List<Invite>> fetchJoinedInvitesForUserTyped(
     String userId, {
     int limit = 500,
     int pageSize = 200,
@@ -72,33 +113,33 @@ class InvitesRepository {
           if (rows.length < pageSize) break;
           from += pageSize;
         }
-        if (inviteIds.isEmpty) return <Map<String, dynamic>>[];
+        if (inviteIds.isEmpty) return <Invite>[];
 
-        final allInvites = <Map<String, dynamic>>[];
+        final allInvites = <Invite>[];
         final inviteIdList = inviteIds.toList(growable: false);
         for (var i = 0; i < inviteIdList.length; i += pageSize) {
           final end = (i + pageSize > inviteIdList.length)
               ? inviteIdList.length
               : i + pageSize;
           final chunk = inviteIdList.sublist(i, end);
-          final chunkInvites = await fetchInvitesByIds(chunk.toSet());
-          allInvites.addAll(chunkInvites);
+          final chunkInvites = await fetchInvitesByIdsTyped(chunk.toSet());
+          allInvites.addAll(chunkInvites.map((invite) {
+            return Invite.fromMap(invite.toMap(), joinedByCurrentUser: true);
+          }));
         }
 
-        final merged = <String, Map<String, dynamic>>{};
+        final merged = <String, Invite>{};
         for (final invite in allInvites) {
-          final id = invite['id']?.toString();
-          if (id == null || id.isEmpty) continue;
-          invite['joined_by_current_user'] = true;
-          merged[id] = invite;
+          if (invite.id.isEmpty) continue;
+          merged[invite.id] = invite;
         }
         final result = merged.values.toList(growable: false)
           ..sort((a, b) {
             final aCreated =
-                DateTime.tryParse(a['created_at']?.toString() ?? '') ??
+                DateTime.tryParse(a.createdAt ?? '') ??
                     DateTime.fromMillisecondsSinceEpoch(0);
             final bCreated =
-                DateTime.tryParse(b['created_at']?.toString() ?? '') ??
+                DateTime.tryParse(b.createdAt ?? '') ??
                     DateTime.fromMillisecondsSinceEpoch(0);
             return bCreated.compareTo(aCreated);
           });
@@ -106,6 +147,19 @@ class InvitesRepository {
       },
       shouldRetry: isNetworkError,
     );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchJoinedInvitesForUser(
+    String userId, {
+    int limit = 500,
+    int pageSize = 200,
+  }) async {
+    final invites = await fetchJoinedInvitesForUserTyped(
+      userId,
+      limit: limit,
+      pageSize: pageSize,
+    );
+    return _toMapList(invites);
   }
 
   Future<List<Map<String, dynamic>>> fetchJoinedInviteMemberRows(
@@ -124,17 +178,21 @@ class InvitesRepository {
 
   Future<List<Map<String, dynamic>>> fetchInvitesByIds(
       Set<String> inviteIds) async {
+    final invites = await fetchInvitesByIdsTyped(inviteIds);
+    return _toMapList(invites);
+  }
+
+  Future<List<Invite>> fetchInvitesByIdsTyped(Set<String> inviteIds) async {
     if (inviteIds.isEmpty) return const [];
     final invitesRes = await _client
         .from('invites')
-        .select(
-            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)')
+        .select(_inviteSelect)
         .inFilter('id', inviteIds.toList())
         .order('created_at', ascending: false);
-    return (invitesRes as List).cast<Map<String, dynamic>>();
+    return _toInviteList((invitesRes as List));
   }
 
-  Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({
+  Future<List<Invite>> fetchOpenInvitesNearbyTyped({
     int limit = 50,
     double? lat,
     double? lon,
@@ -154,7 +212,24 @@ class InvitesRepository {
         'p_limit': limit,
       },
     );
-    return (res as List).cast<Map<String, dynamic>>();
+    return _toInviteList((res as List));
+  }
+
+  Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({
+    int limit = 50,
+    double? lat,
+    double? lon,
+    int radiusKm = 20,
+    String? city,
+  }) async {
+    final invites = await fetchOpenInvitesNearbyTyped(
+      limit: limit,
+      lat: lat,
+      lon: lon,
+      radiusKm: radiusKm,
+      city: city,
+    );
+    return _toMapList(invites);
   }
 
   Future<Set<String>> fetchUserGroupIds(String userId) async {
