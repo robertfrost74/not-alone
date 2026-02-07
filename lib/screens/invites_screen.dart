@@ -320,6 +320,14 @@ class _InvitesScreenState extends State<InvitesScreen> {
         radiusKm: 20,
         city: widget.appState.city,
       );
+      if (invites.isEmpty && widget.appState.city != null) {
+        invites = await _invitesRepository.fetchOpenInvites(
+          lat: null,
+          lon: null,
+          radiusKm: 20,
+          city: widget.appState.city,
+        );
+      }
       if (mounted && _offline) {
         setState(() => _offline = false);
       }
