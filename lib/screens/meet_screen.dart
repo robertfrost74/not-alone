@@ -46,6 +46,7 @@ class _MeetScreenState extends State<MeetScreen> {
   String? _meetupId;
   String _memberStatus = 'coming';
   bool _updatingStatus = false;
+  bool _feedbackSubmitted = false;
 
   String _t(String en, String sv) => widget.appState.t(en, sv);
   bool get _hasPlace => _placeName.trim().isNotEmpty;
@@ -334,6 +335,119 @@ class _MeetScreenState extends State<MeetScreen> {
     }
   }
 
+  Future<void> _maybeAskFeedback() async {
+    if (_feedbackSubmitted) return;
+    final inviteMemberId = widget.inviteMemberId;
+    final inviteId = widget.inviteId;
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (inviteMemberId == null ||
+        inviteMemberId.isEmpty ||
+        inviteId == null ||
+        inviteId.isEmpty ||
+        currentUser == null) {
+      return;
+    }
+
+    int rating = 4;
+    final controller = TextEditingController();
+    if (!mounted) return;
+    final submit = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setState) => SocialDialog(
+              title: Text(_t('How was it?', 'Hur var det?')),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_t('Rate the meetup', 'Betygsätt mötet')),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: List.generate(
+                      5,
+                      (index) {
+                        final value = index + 1;
+                        return SocialChoiceChip(
+                          label: value.toString(),
+                          selected: rating == value,
+                          onSelected: (_) => setState(() => rating = value),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_t('Comment (optional)', 'Kommentar (valfritt)')),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: InputDecoration(
+                      hintText: _t(
+                        'What worked well?',
+                        'Vad fungerade bra?',
+                      ),
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.08),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white24),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF2DD4CF)),
+                      ),
+                    ),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(_t('Skip', 'Hoppa över')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: Text(_t('Submit', 'Skicka')),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (!submit) {
+      controller.dispose();
+      return;
+    }
+
+    final comment = controller.text.trim();
+    controller.dispose();
+
+    try {
+      await Supabase.instance.client.from('invite_feedback').insert({
+        'invite_id': inviteId,
+        'invite_member_id': inviteMemberId,
+        'user_id': currentUser.id,
+        'rating': rating,
+        'comment': comment.isEmpty ? null : comment,
+      });
+      if (!mounted) return;
+      _feedbackSubmitted = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('Thanks for the feedback', 'Tack för din feedback')),
+        ),
+      );
+    } catch (_) {
+      // Ignore errors (e.g., already submitted).
+    }
+  }
+
   Future<void> _persistCannotCome() async {
     final inviteMemberId = widget.inviteMemberId;
     if (inviteMemberId == null || inviteMemberId.isEmpty) return;
@@ -384,6 +498,7 @@ class _MeetScreenState extends State<MeetScreen> {
       if (_remainingSeconds == 0) {
         _timer?.cancel();
         _persistFinish();
+        _maybeAskFeedback();
       }
     });
   }
@@ -600,6 +715,8 @@ class _MeetScreenState extends State<MeetScreen> {
                             onPressed: () async {
                               _timer?.cancel();
                               await _persistFinish();
+                              if (!mounted) return;
+                              await _maybeAskFeedback();
                               if (!mounted) return;
                               Navigator.pop(this.context);
                             },

@@ -41,6 +41,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   bool _loadingInvites = false;
   bool _realtimeFailed = false;
   Set<String> _blockedUserIds = {};
+  Set<String> _favoriteUserIds = {};
   DateTime? _lastJoinAttemptAt;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   static const Duration _joinCooldown = Duration(seconds: 2);
@@ -293,6 +294,23 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  Future<Set<String>> _fetchFavoriteUserIds(String userId) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('user_favorites')
+          .select('target_user_id')
+          .match({'user_id': userId});
+      final favorites = <String>{};
+      for (final row in rows.whereType<Map<String, dynamic>>()) {
+        final id = row['target_user_id']?.toString();
+        if (id != null && id.isNotEmpty) favorites.add(id);
+      }
+      return favorites;
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
     try {
@@ -314,6 +332,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
           setState(() => _blockedUserIds = blockedIds);
         } else {
           _blockedUserIds = blockedIds;
+        }
+        final favoriteIds = await _fetchFavoriteUserIds(currentUserId);
+        if (mounted) {
+          setState(() => _favoriteUserIds = favoriteIds);
+        } else {
+          _favoriteUserIds = favoriteIds;
         }
         invites = invites.where((invite) {
           final hostId = invite['host_user_id']?.toString();
@@ -681,6 +705,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
     if (hostId.isEmpty) return;
     final hostName = (invite['host_display_name'] ?? '').toString().trim();
     final isBlocked = _blockedUserIds.contains(hostId);
+    final isFavorite = _favoriteUserIds.contains(hostId);
 
     if (!mounted) return;
     await showModalBottomSheet<void>(
@@ -707,6 +732,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _showInviteQuestions(invite);
+                    },
+                    icon: const Icon(Icons.question_answer_outlined),
+                    label: Text(_t('Ask organizer', 'Fråga arrangören')),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      await _toggleFavorite(hostId, isFavorite);
+                    },
+                    icon: Icon(isFavorite ? Icons.star : Icons.star_border),
+                    label: Text(
+                      isFavorite
+                          ? _t('Remove favorite', 'Ta bort favorit')
+                          : _t('Favorite user', 'Favoritmarkera användare'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetContext);
@@ -772,6 +819,272 @@ class _InvitesScreenState extends State<InvitesScreen> {
         SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
       );
     }
+  }
+
+  Future<void> _toggleFavorite(String userId, bool isFavorite) async {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+    try {
+      if (isFavorite) {
+        await Supabase.instance.client.from('user_favorites').delete().match({
+          'user_id': currentUser.id,
+          'target_user_id': userId,
+        });
+        _favoriteUserIds.remove(userId);
+      } else {
+        await Supabase.instance.client.from('user_favorites').insert({
+          'user_id': currentUser.id,
+          'target_user_id': userId,
+        });
+        _favoriteUserIds.add(userId);
+      }
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isFavorite
+                ? _t('Favorite removed', 'Favorit borttagen')
+                : _t('Added to favorites', 'Tillagd som favorit'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+      );
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchInviteComments(
+      String inviteId) async {
+    final rows = await Supabase.instance.client
+        .from('invite_comments')
+        .select('id, author_id, author_name, body, created_at')
+        .match({'invite_id': inviteId})
+        .order('created_at', ascending: true)
+        .limit(100);
+    return rows.whereType<Map<String, dynamic>>().toList();
+  }
+
+  Future<void> _showInviteQuestions(Map<String, dynamic> invite) async {
+    final inviteId = invite['id']?.toString();
+    if (inviteId == null || inviteId.isEmpty) return;
+    final hostId = invite['host_user_id']?.toString();
+    final hostName = (invite['host_display_name'] ?? '').toString().trim();
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) return;
+
+    List<Map<String, dynamic>> comments = [];
+    bool loading = true;
+    bool submitting = false;
+    final controller = TextEditingController();
+
+    try {
+      comments = await _fetchInviteComments(inviteId);
+    } catch (_) {
+      comments = [];
+    } finally {
+      loading = false;
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF0F1A1A),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> submit() async {
+              final text = controller.text.trim();
+              if (text.isEmpty || submitting) return;
+              setState(() => submitting = true);
+              final authorName = (currentUser.userMetadata?['username'] ?? '')
+                  .toString()
+                  .trim();
+              final fallback = currentUser.email?.split('@').first ?? 'User';
+              try {
+                await Supabase.instance.client.from('invite_comments').insert({
+                  'invite_id': inviteId,
+                  'author_id': currentUser.id,
+                  'author_name': authorName.isEmpty ? fallback : authorName,
+                  'body': text,
+                });
+                controller.clear();
+                comments = await _fetchInviteComments(inviteId);
+                setState(() {});
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${_t("Error", "Fel")}: $e')),
+                );
+              } finally {
+                if (mounted) {
+                  setState(() => submitting = false);
+                }
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 12,
+                  right: 12,
+                  top: 8,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      hostName.isEmpty
+                          ? _t('Questions', 'Frågor')
+                          : _t('Questions for $hostName', 'Frågor till $hostName'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 240,
+                      child: loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : comments.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    _t(
+                                      'No questions yet.',
+                                      'Inga frågor ännu.',
+                                    ),
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  itemCount: comments.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 10),
+                                  itemBuilder: (context, index) {
+                                    final item = comments[index];
+                                    final author =
+                                        (item['author_name'] ?? '').toString();
+                                    final created =
+                                        _formatDateTime(item['created_at']);
+                                    final body =
+                                        (item['body'] ?? '').toString();
+                                    final isHost = hostId != null &&
+                                        hostId.isNotEmpty &&
+                                        item['author_id']?.toString() == hostId;
+                                    return Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border:
+                                            Border.all(color: Colors.white24),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Text(
+                                                author.isEmpty
+                                                    ? _t('User', 'Användare')
+                                                    : author,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              if (isHost) ...[
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  _t('(host)', '(värd)'),
+                                                  style: const TextStyle(
+                                                    color: Colors.white60,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                              const Spacer(),
+                                              Text(
+                                                created,
+                                                style: const TextStyle(
+                                                  color: Colors.white54,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            body,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => submit(),
+                      decoration: InputDecoration(
+                        hintText: _t(
+                          'Write a question...',
+                          'Skriv en fråga...',
+                        ),
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.08),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.white24),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF2DD4CF)),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 44,
+                      child: FilledButton(
+                        onPressed: submitting ? null : submit,
+                        child: Text(
+                          submitting
+                              ? _t('Sending...', 'Skickar...')
+                              : _t('Send', 'Skicka'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
   }
 
   Future<void> _reportUser(Map<String, dynamic> invite) async {
