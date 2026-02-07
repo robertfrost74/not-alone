@@ -30,6 +30,7 @@ class InvitesScreen extends StatefulWidget {
   final Future<List<Map<String, dynamic>>> Function()? testLoadInvites;
   final Future<String?> Function(String inviteId)? testJoinInvite;
   final Future<void> Function(String inviteMemberId)? testLeaveInvite;
+  final Future<void> Function(String inviteId)? testDeleteInvite;
 
   const InvitesScreen({
     super.key,
@@ -39,6 +40,7 @@ class InvitesScreen extends StatefulWidget {
     this.testLoadInvites,
     this.testJoinInvite,
     this.testLeaveInvite,
+    this.testDeleteInvite,
   });
 
   @override
@@ -206,6 +208,19 @@ class _InvitesScreenState extends State<InvitesScreen> {
     if (_loadingInvites) return;
     setState(() {
       _invitesFuture = _loadInvites();
+    });
+  }
+
+  void _removeInviteLocally(String inviteId) {
+    _optimisticJoinedInviteIds.remove(inviteId);
+    _optimisticMemberIds.remove(inviteId);
+    final next = _cachedInvites
+        .where((it) => it['id']?.toString() != inviteId)
+        .toList(growable: false);
+    _cachedInvites = next;
+    if (!mounted) return;
+    setState(() {
+      _invitesFuture = Future.value(next);
     });
   }
 
@@ -773,18 +788,22 @@ class _InvitesScreenState extends State<InvitesScreen> {
     if (!mounted) return;
 
     try {
-      // Clean up dependent rows first to avoid FK delete errors.
-      await Supabase.instance.client
-          .from('invite_members')
-          .delete()
-          .match({'invite_id': inviteId});
-      await Supabase.instance.client
-          .from('meetups')
-          .delete()
-          .match({'invite_id': inviteId});
-      await _softDeleteInvite(inviteId);
+      if (widget.testDeleteInvite != null) {
+        await widget.testDeleteInvite!(inviteId);
+      } else {
+        // Clean up dependent rows first to avoid FK delete errors.
+        await Supabase.instance.client
+            .from('invite_members')
+            .delete()
+            .match({'invite_id': inviteId});
+        await Supabase.instance.client
+            .from('meetups')
+            .delete()
+            .match({'invite_id': inviteId});
+        await _softDeleteInvite(inviteId);
+      }
       if (!mounted) return;
-      _reloadInvites();
+      _removeInviteLocally(inviteId);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1616,8 +1635,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           leading: IconButton(
             icon: const Icon(Icons.home_outlined),
             onPressed: () {
-              Navigator.of(context)
-                  .pushNamedAndRemoveUntil('/invites', (route) => false);
+              scheduleTabSwitch(tabRootKey: _tabRootKey, index: 0);
             },
           ),
           bottom: TabBar(
