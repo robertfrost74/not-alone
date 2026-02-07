@@ -62,7 +62,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
   RealtimeChannel? _invitesChannel;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
-  String? _lastBucketLog;
   bool _explicitSignOut = false;
   String _lastPersistedUserId = '';
   static const int _authRetryMax = 10;
@@ -587,9 +586,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
-    debugPrint(
-      '[Invites] load start user=${_effectiveCurrentUserId} city=${widget.appState.city} lat=${widget.appState.currentLat} lon=${widget.appState.currentLon}',
-    );
     try {
       final currentUserId = _effectiveCurrentUserId;
       final cacheOwnedByCurrentUser = _cachedInvitesUserId.isEmpty ||
@@ -615,7 +611,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
         city: widget.appState.city,
       );
       var invites = firstFetch;
-      debugPrint('[Invites] fetch open count=${invites.length}');
       if (currentUserId.isNotEmpty &&
           invites.isNotEmpty &&
           invites.every(
@@ -626,7 +621,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
         final rawFallback = await _invitesRepository.fetchOpenInvitesRaw();
         if (rawFallback.isNotEmpty) {
           invites = rawFallback;
-          debugPrint('[Invites] fetch raw fallback count=${invites.length}');
         }
       }
       if (invites.isEmpty && widget.appState.city != null) {
@@ -646,13 +640,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
         currentUserId: currentUserId,
         optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
       );
-      debugPrint('[Invites] after preserve count=${invites.length}');
-
       if (currentUserId.isNotEmpty) {
         try {
           final joinedInvites =
               await _invitesRepository.fetchJoinedInvitesForUser(currentUserId);
-          debugPrint('[Invites] joined fetch count=${joinedInvites.length}');
           if (joinedInvites.isNotEmpty) {
             invites = mergeInvitesById(
               baseInvites: invites,
@@ -758,17 +749,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
         invite['group_name'] = (group?['name'] ?? '').toString();
       }
       if (invites.isEmpty && _cachedInvites.isNotEmpty) {
-        debugPrint(
-          '[Invites] empty result, returning cached count=${_cachedInvites.length}',
-        );
         return _cachedInvites;
       }
       _cachedInvites = invites;
       _cachedInvitesUserId = currentUserId;
-      debugPrint('[Invites] load done count=${invites.length}');
       return invites;
     } catch (e) {
-      debugPrint('[Invites] load error: $e');
       if (mounted) {
         setState(() => _offline = isNetworkError(e));
       }
@@ -968,10 +954,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                 .from('invite_members')
                 .update({'status': 'accepted'})
                 .eq('id', inviteMemberId);
-            debugPrint('[Invites] join status fixed to accepted');
           }
         } catch (e) {
-          debugPrint('[Invites] join verify failed: $e');
         }
       }
       if (inviteMemberId == null || inviteMemberId.isEmpty) {
@@ -2234,12 +2218,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
                             optimisticJoinedIds: _optimisticJoinedInviteIds,
                             matchesAudience: _matchesAudience,
                           );
-                          final bucketLog =
-                              '[Invites] buckets all=${allItems.length} activity=${_activity} filtered=${activityFiltered.length} forMe=${buckets.invitesForMe.length} my=${buckets.myInvites.length} joined=${buckets.joinedInvites.length} group=${buckets.groupInvites.length} hasLocationOrCity=$hasLocationOrCity';
-                          if (_lastBucketLog != bucketLog) {
-                            _lastBucketLog = bucketLog;
-                            debugPrint(bucketLog);
-                          }
 
                           return Column(
                             children: [
