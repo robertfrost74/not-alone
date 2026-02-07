@@ -58,4 +58,33 @@ void main() {
     expect(buckets.myInvites.map((it) => it['id']), ['mine-1']);
     expect(buckets.invitesForMe.map((it) => it['id']), ['other-1']);
   });
+
+  test('bucketInvites keeps joined tab via joined_by_current_user flag', () {
+    final joined = {
+      'id': 'joined-1',
+      'host_user_id': 'host-1',
+      'group_id': null,
+      'joined_by_current_user': true,
+      'invite_members': [],
+    };
+    final other = {
+      'id': 'other-1',
+      'host_user_id': 'host-2',
+      'group_id': null,
+      'invite_members': [],
+    };
+
+    final buckets = bucketInvites(
+      activityFiltered: [joined, other],
+      currentUserId: '',
+      optimisticJoinedIds: const {},
+      matchesAudience: (_) => true,
+    );
+
+    expect(buckets.joinedInvites.map((it) => it['id']), ['joined-1']);
+    expect(
+      buckets.invitesForMe.map((it) => it['id']).toList(),
+      isNot(contains('joined-1')),
+    );
+  });
 }

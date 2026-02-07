@@ -11,6 +11,7 @@ import '../services/join_ui.dart';
 import '../services/invite_buckets.dart';
 import '../services/tab_switcher.dart';
 import '../services/invite_counts.dart';
+import '../services/invite_cache.dart';
 import 'messages_screen.dart';
 import 'profile_screen.dart';
 import 'groups_screen.dart';
@@ -54,6 +55,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
+  StreamSubscription<AuthState>? _authSub;
   RealtimeChannel? _invitesChannel;
   final Map<String, String> _hostNamesCache = {};
   bool _profilesLoaded = false;
@@ -67,9 +69,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   final Map<String, String> _optimisticMemberIds = {};
   List<Map<String, dynamic>> _cachedInvites = [];
   String _stableCurrentUserId = '';
-  DateTime? _lastJoinAttemptAt;
   static const Duration _profileCacheTtl = Duration(minutes: 5);
-  static const Duration _joinCooldown = Duration(seconds: 2);
   final InvitesRepository _invitesRepository = InvitesRepository();
 
   String _activity = 'all'; // all|walk|coffee|workout|lunch|dinner
@@ -182,6 +182,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
     super.initState();
     _stableCurrentUserId = _currentUserId ?? '';
     _invitesFuture = _loadInvites();
+    _startAuthSync();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncCurrentUserId(reloadIfChanged: true);
+    });
     _startRealtime();
     _initLocation();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -195,6 +199,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   void dispose() {
     _clockTimer?.cancel();
     _realtimeDebounceTimer?.cancel();
+    _authSub?.cancel();
     final channel = _invitesChannel;
     if (channel != null) {
       Supabase.instance.client.removeChannel(channel);
@@ -206,9 +211,22 @@ class _InvitesScreenState extends State<InvitesScreen> {
   void _reloadInvites() {
     if (!mounted) return;
     if (_loadingInvites) return;
+    final tabIndex = _currentTabIndex();
     setState(() {
       _invitesFuture = _loadInvites();
     });
+    _restoreTabIndex(tabIndex);
+  }
+
+  int? _currentTabIndex() {
+    final tabContext = _tabRootKey.currentContext;
+    if (tabContext == null) return null;
+    return DefaultTabController.of(tabContext).index;
+  }
+
+  void _restoreTabIndex(int? index) {
+    if (index == null) return;
+    scheduleTabSwitch(tabRootKey: _tabRootKey, index: index);
   }
 
   void _removeInviteLocally(String inviteId) {
@@ -287,6 +305,30 @@ class _InvitesScreenState extends State<InvitesScreen> {
     }
   }
 
+  void _startAuthSync() {
+    if (widget.testLoadInvites != null) return;
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      _syncCurrentUserId(
+        candidateUserId:
+            event.session?.user.id ?? Supabase.instance.client.auth.currentUser?.id,
+        reloadIfChanged: true,
+      );
+    });
+  }
+
+  void _syncCurrentUserId({
+    String? candidateUserId,
+    required bool reloadIfChanged,
+  }) {
+    final nextUserId = candidateUserId ?? _currentUserId;
+    if (nextUserId == null || nextUserId.isEmpty) return;
+    if (nextUserId == _stableCurrentUserId) return;
+    _stableCurrentUserId = nextUserId;
+    if (reloadIfChanged) {
+      _reloadInvites();
+    }
+  }
+
   void _scheduleRealtimeReload() {
     _realtimeDebounceTimer?.cancel();
     _realtimeDebounceTimer = Timer(const Duration(milliseconds: 350), () {
@@ -303,6 +345,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         widget.appState.setCity(metadataCity);
+        _reloadInvites();
       });
     }
 
@@ -409,17 +452,25 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Future<List<Map<String, dynamic>>> _loadInvites() async {
     _loadingInvites = true;
     try {
+      final currentUserId = _effectiveCurrentUserId;
       if (widget.testLoadInvites != null) {
-        final invites = await widget.testLoadInvites!.call();
+        final freshInvites = await widget.testLoadInvites!.call();
+        final invites = preserveInvitesWithCache(
+          freshInvites: freshInvites,
+          cachedInvites: _cachedInvites,
+          currentUserId: currentUserId,
+          optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
+        );
         _cachedInvites = invites;
         return invites;
       }
-      var invites = await _invitesRepository.fetchOpenInvites(
+      final firstFetch = await _invitesRepository.fetchOpenInvites(
         lat: widget.appState.currentLat,
         lon: widget.appState.currentLon,
         radiusKm: 20,
         city: widget.appState.city,
       );
+      var invites = firstFetch;
       if (invites.isEmpty && widget.appState.city != null) {
         invites = await _invitesRepository.fetchOpenInvites(
           lat: null,
@@ -431,12 +482,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (mounted && _offline) {
         setState(() => _offline = false);
       }
-      if (invites.isEmpty) {
-        _cachedInvites = invites;
-        return invites;
+      invites = preserveInvitesWithCache(
+        freshInvites: invites,
+        cachedInvites: _cachedInvites,
+        currentUserId: currentUserId,
+        optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
+      );
+
+      if (currentUserId.isNotEmpty) {
+        try {
+          final joinedInvites =
+              await _invitesRepository.fetchJoinedInvitesForUser(currentUserId);
+          if (joinedInvites.isNotEmpty) {
+            invites = mergeInvitesById(
+              baseInvites: invites,
+              extraInvites: joinedInvites,
+            );
+          }
+        } catch (_) {
+          // Keep page resilient if joined-invite query is unavailable.
+        }
       }
 
-      final currentUserId = _effectiveCurrentUserId;
       if (currentUserId.isNotEmpty) {
         final blockedIds = await _fetchBlockedUserIds(currentUserId);
         if (mounted) {
@@ -506,6 +573,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
         }
         final group = invite['groups'] as Map<String, dynamic>?;
         invite['group_name'] = (group?['name'] ?? '').toString();
+      }
+      if (invites.isEmpty && _cachedInvites.isNotEmpty) {
+        return _cachedInvites;
       }
       _cachedInvites = invites;
       return invites;
@@ -637,8 +707,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<void> _joinInvite(Map<String, dynamic> invite) async {
-    if (_isJoinCooldownActive) return;
-    _lastJoinAttemptAt = DateTime.now();
+    final tabIndex = _currentTabIndex();
     final canProceed = await _ensureProfileCompleteForJoin();
     if (!canProceed || !mounted) return;
 
@@ -703,7 +772,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
       if (!mounted) return;
       _optimisticJoinedInviteIds.add(inviteId);
       _optimisticMemberIds[inviteId] = inviteMemberId;
+      invite['joined_by_current_user'] = true;
       setState(() {});
+      _restoreTabIndex(tabIndex);
     } catch (e) {
       if (!mounted) return;
       final message = mapSupabaseError(
@@ -720,6 +791,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
         setState(() {
           _joiningInviteId = null;
         });
+        _restoreTabIndex(tabIndex);
       }
     }
   }
@@ -1337,18 +1409,18 @@ class _InvitesScreenState extends State<InvitesScreen> {
   String _countLabel(Map<String, dynamic> invite) {
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final maxParticipants = (invite['max_participants'] as num?)?.toInt();
-    final count = mode == 'one_to_one' ? 1 : maxParticipants;
+    final count = mode == 'one_to_one' ? 2 : maxParticipants;
     final value = count?.toString() ?? '-';
     return isSv ? 'Max antal: $value' : 'Max participants: $value';
   }
 
   String _joinedOfMaxLabel(Map<String, dynamic> invite) {
-    final accepted = _acceptedCount(invite);
+    final accepted = _participantCount(invite);
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
     final maxParticipants =
         rawMax is num ? rawMax.toInt() : int.tryParse(rawMax?.toString() ?? '');
-    final maxValue = mode == 'one_to_one' ? 1 : maxParticipants;
+    final maxValue = mode == 'one_to_one' ? 2 : maxParticipants;
     return maxValue == null ? '$accepted/-' : '$accepted/$maxValue';
   }
 
@@ -1396,7 +1468,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   InviteStatus _inviteStatus(Map<String, dynamic> invite) {
     final meetingAt = _parseDateTime(invite['meeting_time']);
-    final accepted = _acceptedCount(invite);
+    final accepted = _participantCount(invite);
     final mode = _normalizeMode((invite['mode'] ?? '').toString());
     final rawMax = invite['max_participants'];
     final maxParticipants =
@@ -1419,6 +1491,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
       optimisticJoinedIds: _optimisticJoinedInviteIds,
       currentUserId: _effectiveCurrentUserId,
     );
+  }
+
+  int _participantCount(Map<String, dynamic> invite) {
+    final guests = _acceptedCount(invite);
+    final hostId = invite['host_user_id']?.toString();
+    final hostCount = (hostId != null && hostId.isNotEmpty) ? 1 : 0;
+    return guests + hostCount;
   }
 
   String _statusLabel(InviteStatus status) {
@@ -1448,10 +1527,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   bool _canJoinStatus(InviteStatus status) => status == InviteStatus.open;
-  bool get _isJoinCooldownActive =>
-      _lastJoinAttemptAt != null &&
-      DateTime.now().difference(_lastJoinAttemptAt!) < _joinCooldown;
-
   String _joinButtonLabel(InviteStatus status) {
     switch (status) {
       case InviteStatus.full:
@@ -1498,9 +1573,43 @@ class _InvitesScreenState extends State<InvitesScreen> {
     return null;
   }
 
-  Future<void> _leaveInvite(Map<String, dynamic> invite) async {
+  Future<String?> _resolveCurrentMemberId(Map<String, dynamic> invite) async {
+    final existing = _currentMemberId(invite);
+    if (existing != null && existing.isNotEmpty) return existing;
+    if (widget.testLeaveInvite != null) return null;
+
     final inviteId = invite['id']?.toString();
-    final memberId = _currentMemberId(invite);
+    final currentUserId = _effectiveCurrentUserId;
+    if (inviteId == null ||
+        inviteId.isEmpty ||
+        currentUserId.isEmpty) {
+      return null;
+    }
+
+    final rows = await Supabase.instance.client
+        .from('invite_members')
+        .select('id')
+        .eq('invite_id', inviteId)
+        .eq('user_id', currentUserId)
+        .neq('status', 'cannot_attend')
+        .limit(1);
+    if (rows is List && rows.isNotEmpty) {
+      final first = rows.first;
+      if (first is Map<String, dynamic>) {
+        final memberId = first['id']?.toString();
+        if (memberId != null && memberId.isNotEmpty) {
+          _optimisticMemberIds[inviteId] = memberId;
+          return memberId;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _leaveInvite(Map<String, dynamic> invite) async {
+    final tabIndex = _currentTabIndex();
+    final inviteId = invite['id']?.toString();
+    final memberId = await _resolveCurrentMemberId(invite);
     if (inviteId == null || inviteId.isEmpty || memberId == null) return;
     try {
       if (widget.testLeaveInvite != null) {
@@ -1516,6 +1625,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       final currentUserId = _effectiveCurrentUserId;
       if (currentUserId.isNotEmpty) {
         void markLeft(Map<String, dynamic> target) {
+          target['joined_by_current_user'] = false;
           final members =
               (target['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
                   const [];
@@ -1534,6 +1644,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       }
       if (!mounted) return;
       setState(() {});
+      _restoreTabIndex(tabIndex);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1580,7 +1691,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       inviteId: inviteId,
       joiningInviteId: _joiningInviteId,
       canJoin: _canJoinStatus(status),
-      isJoinCooldownActive: _isJoinCooldownActive,
+      isJoinCooldownActive: false,
       isSv: isSv,
       defaultLabel: isJoined ? _t('Leave', 'Lämna') : _joinButtonLabel(status),
     );
@@ -1603,7 +1714,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
           status == InviteStatus.full ? Colors.white : Colors.black,
       canEdit: canDelete,
       onEdit: () => _editInvite(it),
-      onDelete: () => _deleteInvite(it),
+      onDelete: null,
       countLabel: _countLabel(it),
       durationMinutes: int.tryParse(it['duration'].toString()) ?? 0,
       timeLine: isSv ? 'Tid: $meetingTimeLabel' : 'Time: $meetingTimeLabel',

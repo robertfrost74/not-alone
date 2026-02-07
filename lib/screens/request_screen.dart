@@ -18,9 +18,9 @@ class RequestScreen extends StatefulWidget {
 class _RequestScreenState extends State<RequestScreen> {
   String _activity = 'walk';
   String _customActivity = '';
-  int _participantCount = 1;
+  int _participantCount = 2;
   double _durationMin = 20;
-  double _radiusKm = 3;
+  double _radiusKm = 20;
   RangeValues _ageRange = const RangeValues(16, 120);
   String _targetGender = 'all'; // all | male | female
   bool _loading = false;
@@ -491,7 +491,7 @@ class _RequestScreenState extends State<RequestScreen> {
       );
       return;
     }
-    final mode = _participantCount == 1 ? 'one_to_one' : 'group';
+    final mode = _participantCount == 2 ? 'one_to_one' : 'group';
     final activityValue =
         _activity == 'custom' ? _customActivity.trim() : _activity;
     final missing = <String>[];
@@ -744,10 +744,10 @@ class _RequestScreenState extends State<RequestScreen> {
                           child: SizedBox(
                             width: double.infinity,
                           child: Slider(
-                            min: 1,
+                            min: 2,
                             max: 20,
-                            divisions: 19,
-                            value: _participantCount.toDouble().clamp(1, 20),
+                            divisions: 18,
+                            value: _participantCount.toDouble().clamp(2, 20),
                             label: _participantCount.toString(),
                             onChanged: (v) =>
                                 setState(() => _participantCount = v.round()),
@@ -875,8 +875,8 @@ class _RequestScreenState extends State<RequestScreen> {
                             width: double.infinity,
                             child: Slider(
                               min: 1,
-                              max: 10,
-                              divisions: 9,
+                              max: 20,
+                              divisions: 19,
                               value: _radiusKm,
                               label: '${_radiusKm.round()} km',
                               onChanged: (v) => setState(() => _radiusKm = v),

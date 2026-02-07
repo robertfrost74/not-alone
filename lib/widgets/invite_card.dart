@@ -10,7 +10,7 @@ class InviteCard extends StatelessWidget {
   final Color statusTextColor;
   final bool canEdit;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete;
   final String countLabel;
   final int durationMinutes;
   final String timeLine;
@@ -36,7 +36,7 @@ class InviteCard extends StatelessWidget {
     required this.statusTextColor,
     required this.canEdit,
     required this.onEdit,
-    required this.onDelete,
+    this.onDelete,
     required this.countLabel,
     required this.durationMinutes,
     required this.timeLine,
@@ -144,14 +144,15 @@ class InviteCard extends StatelessWidget {
                         child: Icon(Icons.edit_outlined, size: 22),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: onDelete,
-                      child: const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: Icon(Icons.delete_outline, size: 22),
+                    if (onDelete != null)
+                      GestureDetector(
+                        onTap: onDelete,
+                        child: const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Icon(Icons.delete_outline, size: 22),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],

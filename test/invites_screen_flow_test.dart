@@ -66,7 +66,7 @@ void main() {
     await tester.tap(find.text('Tackat ja'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(OutlinedButton, 'Lämna'), findsOneWidget);
-    expect(find.text('1/1'), findsOneWidget);
+    expect(find.text('2/2'), findsOneWidget);
     expect(find.text('Full'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Lämna'));
@@ -282,6 +282,58 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ta bort inbjudan?'), findsOneWidget);
+  });
+
+  testWidgets('host group invite shows creator included in count', (tester) async {
+    final appState = AppState();
+    appState.setLocale(const Locale('sv'));
+
+    final invite = {
+      'id': 'invite-host-group',
+      'host_user_id': 'me',
+      'activity': 'workout',
+      'mode': 'group',
+      'max_participants': 4,
+      'energy': 'medium',
+      'talk_level': 'low',
+      'duration': 60,
+      'meeting_time': DateTime(2026, 2, 7, 10, 0).toIso8601String(),
+      'place': 'Gymmet',
+      'created_at': DateTime(2026, 2, 7, 8, 0).toIso8601String(),
+      'invite_members': <Map<String, dynamic>>[],
+      'accepted_count': 0,
+      'group_id': null,
+      'group_name': '',
+      'target_gender': 'all',
+      'age_min': 18,
+      'age_max': 80,
+      'host_display_name': 'Me',
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => [invite],
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+          testDeleteInvite: (_) async {},
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mina'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1/4'), findsOneWidget);
   });
 
   testWidgets('home icon switches to Andras without clearing lists',

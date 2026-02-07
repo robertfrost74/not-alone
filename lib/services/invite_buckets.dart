@@ -19,6 +19,7 @@ InviteBuckets bucketInvites({
   required bool Function(Map<String, dynamic>) matchesAudience,
 }) {
   final joinedInvites = activityFiltered.where((it) {
+    if (it['joined_by_current_user'] == true) return true;
     final members =
         (it['invite_members'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
     final id = it['id']?.toString();

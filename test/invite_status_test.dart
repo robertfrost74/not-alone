@@ -27,7 +27,7 @@ void main() {
   test('computeInviteStatus handles capacity for one_to_one and group', () {
     final open = computeInviteStatus(
       meetingAt: null,
-      accepted: 0,
+      accepted: 1,
       mode: 'one_to_one',
       maxParticipants: null,
       now: DateTime(2026, 2, 6, 12, 0),
@@ -36,7 +36,7 @@ void main() {
 
     final fullOneToOne = computeInviteStatus(
       meetingAt: null,
-      accepted: 1,
+      accepted: 2,
       mode: 'one_to_one',
       maxParticipants: null,
       now: DateTime(2026, 2, 6, 12, 0),

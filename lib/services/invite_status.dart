@@ -21,7 +21,7 @@ InviteStatus computeInviteStatus({
   }
 
   final isFull = mode == 'one_to_one'
-      ? accepted >= 1
+      ? accepted >= 2
       : maxParticipants != null
           ? accepted >= maxParticipants
           : accepted >= 4;

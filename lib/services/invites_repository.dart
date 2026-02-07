@@ -18,13 +18,17 @@ class InvitesRepository {
     String? city,
   }) async {
     return withRetry(
-      () => fetchOpenInvitesNearby(
-        limit: limit,
-        lat: lat,
-        lon: lon,
-        radiusKm: radiusKm,
-        city: city,
-      ),
+      () async {
+        final nearby = await fetchOpenInvitesNearby(
+          limit: limit,
+          lat: lat,
+          lon: lon,
+          radiusKm: radiusKm,
+          city: city,
+        );
+        if (nearby.isNotEmpty) return nearby;
+        return fetchOpenInvitesRaw(limit: limit);
+      },
       shouldRetry: isNetworkError,
     );
   }
@@ -34,11 +38,44 @@ class InvitesRepository {
     final res = await _client
         .from('invites')
         .select(
-            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(status,user_id)')
+            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)')
         .match({'status': 'open'})
         .order('created_at', ascending: false)
         .limit(limit);
     return (res as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchJoinedInvitesForUser(
+    String userId, {
+    int limit = 50,
+  }) async {
+    if (userId.isEmpty) return [];
+    final memberRows = await _client
+        .from('invite_members')
+        .select('invite_id')
+        .eq('user_id', userId)
+        .neq('status', 'cannot_attend')
+        .limit(limit);
+    final inviteIds = <String>{};
+    for (final row in (memberRows as List).cast<Map<String, dynamic>>()) {
+      final inviteId = row['invite_id']?.toString();
+      if (inviteId != null && inviteId.isNotEmpty) {
+        inviteIds.add(inviteId);
+      }
+    }
+    if (inviteIds.isEmpty) return [];
+
+    final invitesRes = await _client
+        .from('invites')
+        .select(
+            'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)')
+        .inFilter('id', inviteIds.toList())
+        .order('created_at', ascending: false);
+    final invites = (invitesRes as List).cast<Map<String, dynamic>>();
+    for (final invite in invites) {
+      invite['joined_by_current_user'] = true;
+    }
+    return invites;
   }
 
   Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({

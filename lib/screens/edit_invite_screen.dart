@@ -26,6 +26,7 @@ class _EditInviteScreenState extends State<EditInviteScreen> {
   late String _mode;
   late TextEditingController _placeController;
   late DateTime _meetingTime;
+  late double _radiusKm;
   late RangeValues _ageRange;
   late String _targetGender;
   String? _selectedGroupId;
@@ -51,6 +52,10 @@ class _EditInviteScreenState extends State<EditInviteScreen> {
         TextEditingController(text: (invite['place'] ?? '').toString());
     _meetingTime =
         _parseDateTime(invite['meeting_time']) ?? DateTime.now().add(const Duration(minutes: 10));
+    _radiusKm = ((invite['radius_km'] as num?)?.toDouble() ??
+            double.tryParse(invite['radius_km']?.toString() ?? '') ??
+            3)
+        .clamp(1, 20);
     _ageRange = RangeValues(
       ((invite['age_min'] as num?)?.toDouble() ??
               double.tryParse(invite['age_min']?.toString() ?? '') ??
@@ -326,6 +331,7 @@ class _EditInviteScreenState extends State<EditInviteScreen> {
         'activity': _activity,
         'place': updatedPlace,
         'duration': _duration,
+        'radius_km': _radiusKm.round(),
         'meeting_time': _meetingTime.toIso8601String(),
         'max_participants': _mode == 'one_to_one' ? null : _maxParticipants,
         'age_min': _ageRange.start.round(),
@@ -481,6 +487,20 @@ class _EditInviteScreenState extends State<EditInviteScreen> {
                             setState(() => _maxParticipants = v.round()),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_t('Radius', 'Avstånd från mig')}: ${_radiusKm.round()} km',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                    Slider(
+                      min: 1,
+                      max: 20,
+                      divisions: 19,
+                      value: _radiusKm.clamp(1, 20),
+                      label: '${_radiusKm.round()} km',
+                      onChanged: (v) => setState(() => _radiusKm = v),
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       '${_t('Age range', 'Ålders spann')}: ${_ageRange.start.round()}-${_ageRange.end.round()}',
