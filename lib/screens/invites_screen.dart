@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../state/app_state.dart';
+import '../state/invites_store.dart';
 import '../services/invites_repository.dart';
 import '../services/invite_status.dart';
 import '../services/error_mapper.dart';
@@ -50,28 +51,12 @@ class InvitesScreen extends StatefulWidget {
 
 class _InvitesScreenState extends State<InvitesScreen> {
   final GlobalKey _tabRootKey = GlobalKey();
-  String? _joiningInviteId;
+  final InvitesStore _store = InvitesStore();
   bool _menuLoading = false;
-  late Future<List<Map<String, dynamic>>> _invitesFuture;
   Timer? _clockTimer;
   Timer? _realtimeDebounceTimer;
   StreamSubscription<AuthState>? _authSub;
   RealtimeChannel? _invitesChannel;
-  final Map<String, String> _hostNamesCache = {};
-  bool _profilesLoaded = false;
-  DateTime? _profilesLoadedAt;
-  bool _offline = false;
-  bool _loadingInvites = false;
-  bool _reloadQueued = false;
-  bool _joinedSyncDegraded = false;
-  bool _realtimeFailed = false;
-  Set<String> _blockedUserIds = {};
-  Set<String> _favoriteUserIds = {};
-  final Set<String> _optimisticJoinedInviteIds = {};
-  final Map<String, String> _optimisticMemberIds = {};
-  List<Map<String, dynamic>> _cachedInvites = [];
-  String _cachedInvitesUserId = '';
-  String _stableCurrentUserId = '';
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
 
@@ -87,6 +72,40 @@ class _InvitesScreenState extends State<InvitesScreen> {
   Map<String, dynamic>? get _currentUserMetadata =>
       widget.testCurrentUserMetadata ??
       Supabase.instance.client.auth.currentUser?.userMetadata;
+
+  String? get _joiningInviteId => _store.joiningInviteId;
+  set _joiningInviteId(String? value) => _store.joiningInviteId = value;
+  Future<List<Map<String, dynamic>>> get _invitesFuture => _store.invitesFuture;
+  set _invitesFuture(Future<List<Map<String, dynamic>>> value) =>
+      _store.invitesFuture = value;
+  bool get _offline => _store.offline;
+  set _offline(bool value) => _store.offline = value;
+  bool get _loadingInvites => _store.loadingInvites;
+  set _loadingInvites(bool value) => _store.loadingInvites = value;
+  bool get _reloadQueued => _store.reloadQueued;
+  set _reloadQueued(bool value) => _store.reloadQueued = value;
+  bool get _joinedSyncDegraded => _store.joinedSyncDegraded;
+  set _joinedSyncDegraded(bool value) => _store.joinedSyncDegraded = value;
+  bool get _realtimeFailed => _store.realtimeFailed;
+  set _realtimeFailed(bool value) => _store.realtimeFailed = value;
+  Set<String> get _blockedUserIds => _store.blockedUserIds;
+  set _blockedUserIds(Set<String> value) => _store.blockedUserIds = value;
+  Set<String> get _favoriteUserIds => _store.favoriteUserIds;
+  set _favoriteUserIds(Set<String> value) => _store.favoriteUserIds = value;
+  Set<String> get _optimisticJoinedInviteIds => _store.optimisticJoinedInviteIds;
+  Map<String, String> get _optimisticMemberIds => _store.optimisticMemberIds;
+  List<Map<String, dynamic>> get _cachedInvites => _store.cachedInvites;
+  set _cachedInvites(List<Map<String, dynamic>> value) =>
+      _store.cachedInvites = value;
+  String get _cachedInvitesUserId => _store.cachedInvitesUserId;
+  set _cachedInvitesUserId(String value) => _store.cachedInvitesUserId = value;
+  String get _stableCurrentUserId => _store.stableCurrentUserId;
+  set _stableCurrentUserId(String value) => _store.stableCurrentUserId = value;
+  Map<String, String> get _hostNamesCache => _store.hostNamesCache;
+  bool get _profilesLoaded => _store.profilesLoaded;
+  set _profilesLoaded(bool value) => _store.profilesLoaded = value;
+  DateTime? get _profilesLoadedAt => _store.profilesLoadedAt;
+  set _profilesLoadedAt(DateTime? value) => _store.profilesLoadedAt = value;
 
   String get _effectiveCurrentUserId {
     final current = _currentUserId;
@@ -222,6 +241,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       Supabase.instance.client.removeChannel(channel);
       _invitesChannel = null;
     }
+    _store.dispose();
     super.dispose();
   }
 
@@ -1799,7 +1819,9 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
+    return ListenableBuilder(
+      listenable: _store,
+      builder: (context, _) => DefaultTabController(
       length: 4,
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -2149,6 +2171,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
