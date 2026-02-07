@@ -1803,7 +1803,35 @@ class _InvitesScreenState extends State<InvitesScreen> {
     final tabIndex = _currentTabIndex();
     final inviteId = invite['id']?.toString();
     final memberId = await _resolveCurrentMemberId(invite);
-    if (inviteId == null || inviteId.isEmpty || memberId == null) return;
+    if (inviteId == null || inviteId.isEmpty) return;
+    final currentUserId = _effectiveCurrentUserId;
+    void markLeft(Map<String, dynamic> target) {
+      target['joined_by_current_user'] = false;
+      final members =
+          (target['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+              const [];
+      for (final member in members) {
+        if (member['user_id']?.toString() == currentUserId) {
+          member['status'] = 'cannot_attend';
+        }
+      }
+    }
+    if (memberId == null) {
+      _optimisticJoinedInviteIds.remove(inviteId);
+      _optimisticMemberIds.remove(inviteId);
+      if (currentUserId.isNotEmpty) {
+        markLeft(invite);
+        for (final cached in _cachedInvites) {
+          if (cached['id']?.toString() != inviteId) continue;
+          markLeft(cached);
+        }
+        await _persistJoinedIds(currentUserId);
+      }
+      if (!mounted) return;
+      setState(() {});
+      _restoreTabIndex(tabIndex);
+      return;
+    }
     try {
       if (widget.testLeaveInvite != null) {
         await widget.testLeaveInvite!(memberId);
@@ -1815,20 +1843,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       }
       _optimisticJoinedInviteIds.remove(inviteId);
       _optimisticMemberIds.remove(inviteId);
-      final currentUserId = _effectiveCurrentUserId;
       if (currentUserId.isNotEmpty) {
-        void markLeft(Map<String, dynamic> target) {
-          target['joined_by_current_user'] = false;
-          final members =
-              (target['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
-                  const [];
-          for (final member in members) {
-            if (member['user_id']?.toString() == currentUserId) {
-              member['status'] = 'cannot_attend';
-            }
-          }
-        }
-
         markLeft(invite);
         for (final cached in _cachedInvites) {
           if (cached['id']?.toString() != inviteId) continue;
