@@ -423,6 +423,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<void> _loadPersistedJoinedIds(String userId) async {
+    if (widget.testLoadInvites != null) return;
     if (userId.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -441,6 +442,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   Future<void> _persistJoinedIds(String userId) async {
+    if (widget.testLoadInvites != null) return;
     if (userId.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -448,16 +450,6 @@ class _InvitesScreenState extends State<InvitesScreen> {
         'joined_invites_$userId',
         _optimisticJoinedInviteIds.toList(growable: false),
       );
-    } catch (_) {
-      // Ignore persistence failures.
-    }
-  }
-
-  Future<void> _clearPersistedJoinedIds(String userId) async {
-    if (userId.isEmpty) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('joined_invites_$userId');
     } catch (_) {
       // Ignore persistence failures.
     }
@@ -955,7 +947,8 @@ class _InvitesScreenState extends State<InvitesScreen> {
                 .update({'status': 'accepted'})
                 .eq('id', inviteMemberId);
           }
-        } catch (e) {
+        } catch (_) {
+          // Best-effort fix; ignore failures.
         }
       }
       if (inviteMemberId == null || inviteMemberId.isEmpty) {
@@ -1795,14 +1788,12 @@ class _InvitesScreenState extends State<InvitesScreen> {
         .eq('user_id', currentUserId)
         .neq('status', 'cannot_attend')
         .limit(1);
-    if (rows is List && rows.isNotEmpty) {
-      final first = rows.first;
-      if (first is Map<String, dynamic>) {
-        final memberId = first['id']?.toString();
-        if (memberId != null && memberId.isNotEmpty) {
-          _optimisticMemberIds[inviteId] = memberId;
-          return memberId;
-        }
+    if (rows.isNotEmpty) {
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      final memberId = row['id']?.toString();
+      if (memberId != null && memberId.isNotEmpty) {
+        _optimisticMemberIds[inviteId] = memberId;
+        return memberId;
       }
     }
     return null;
