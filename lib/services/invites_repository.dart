@@ -47,35 +47,91 @@ class InvitesRepository {
 
   Future<List<Map<String, dynamic>>> fetchJoinedInvitesForUser(
     String userId, {
-    int limit = 50,
+    int limit = 500,
+    int pageSize = 200,
   }) async {
     if (userId.isEmpty) return [];
+    return withRetry(
+      () async {
+        final inviteIds = <String>{};
+        var from = 0;
+        while (inviteIds.length < limit) {
+          final to = from + pageSize - 1;
+          final rows = await fetchJoinedInviteMemberRows(
+            userId,
+            from: from,
+            to: to,
+          );
+          for (final row in rows) {
+            final inviteId = row['invite_id']?.toString();
+            if (inviteId != null && inviteId.isNotEmpty) {
+              inviteIds.add(inviteId);
+              if (inviteIds.length >= limit) break;
+            }
+          }
+          if (rows.length < pageSize) break;
+          from += pageSize;
+        }
+        if (inviteIds.isEmpty) return <Map<String, dynamic>>[];
+
+        final allInvites = <Map<String, dynamic>>[];
+        final inviteIdList = inviteIds.toList(growable: false);
+        for (var i = 0; i < inviteIdList.length; i += pageSize) {
+          final end = (i + pageSize > inviteIdList.length)
+              ? inviteIdList.length
+              : i + pageSize;
+          final chunk = inviteIdList.sublist(i, end);
+          final chunkInvites = await fetchInvitesByIds(chunk.toSet());
+          allInvites.addAll(chunkInvites);
+        }
+
+        final merged = <String, Map<String, dynamic>>{};
+        for (final invite in allInvites) {
+          final id = invite['id']?.toString();
+          if (id == null || id.isEmpty) continue;
+          invite['joined_by_current_user'] = true;
+          merged[id] = invite;
+        }
+        final result = merged.values.toList(growable: false)
+          ..sort((a, b) {
+            final aCreated =
+                DateTime.tryParse(a['created_at']?.toString() ?? '') ??
+                    DateTime.fromMillisecondsSinceEpoch(0);
+            final bCreated =
+                DateTime.tryParse(b['created_at']?.toString() ?? '') ??
+                    DateTime.fromMillisecondsSinceEpoch(0);
+            return bCreated.compareTo(aCreated);
+          });
+        return result;
+      },
+      shouldRetry: isNetworkError,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchJoinedInviteMemberRows(
+    String userId, {
+    required int from,
+    required int to,
+  }) async {
     final memberRows = await _client
         .from('invite_members')
         .select('invite_id')
         .eq('user_id', userId)
         .neq('status', 'cannot_attend')
-        .limit(limit);
-    final inviteIds = <String>{};
-    for (final row in (memberRows as List).cast<Map<String, dynamic>>()) {
-      final inviteId = row['invite_id']?.toString();
-      if (inviteId != null && inviteId.isNotEmpty) {
-        inviteIds.add(inviteId);
-      }
-    }
-    if (inviteIds.isEmpty) return [];
+        .range(from, to);
+    return (memberRows as List).cast<Map<String, dynamic>>();
+  }
 
+  Future<List<Map<String, dynamic>>> fetchInvitesByIds(
+      Set<String> inviteIds) async {
+    if (inviteIds.isEmpty) return const [];
     final invitesRes = await _client
         .from('invites')
         .select(
             'id, host_user_id, max_participants, target_gender, age_min, age_max, created_at, activity, mode, energy, talk_level, duration, place, meeting_time, group_id, groups(name), invite_members(id,status,user_id)')
         .inFilter('id', inviteIds.toList())
         .order('created_at', ascending: false);
-    final invites = (invitesRes as List).cast<Map<String, dynamic>>();
-    for (final invite in invites) {
-      invite['joined_by_current_user'] = true;
-    }
-    return invites;
+    return (invitesRes as List).cast<Map<String, dynamic>>();
   }
 
   Future<List<Map<String, dynamic>>> fetchOpenInvitesNearby({

@@ -4,8 +4,26 @@ List<Map<String, dynamic>> preserveInvitesWithCache({
   required String currentUserId,
   required Set<String> optimisticJoinedInviteIds,
 }) {
+  bool isJoinedInvite(Map<String, dynamic> invite) {
+    final id = invite['id']?.toString();
+    if (id != null && optimisticJoinedInviteIds.contains(id)) {
+      return true;
+    }
+    if (invite['joined_by_current_user'] == true) return true;
+    if (currentUserId.isEmpty) return false;
+    final members =
+        (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
+    return members.any((member) =>
+        member['user_id']?.toString() == currentUserId &&
+        member['status']?.toString() != 'cannot_attend');
+  }
+
   if (freshInvites.isEmpty && cachedInvites.isNotEmpty) {
-    return cachedInvites;
+    if (currentUserId.isNotEmpty) return cachedInvites;
+    final joinedOnly =
+        cachedInvites.where(isJoinedInvite).toList(growable: false);
+    return joinedOnly;
   }
   if (cachedInvites.isEmpty) return freshInvites;
 
@@ -20,23 +38,9 @@ List<Map<String, dynamic>> preserveInvitesWithCache({
     final id = cached['id']?.toString();
     if (id == null || id.isEmpty || freshIds.contains(id)) continue;
 
-    if (currentUserId.isEmpty) {
-      // Avoid destructive drops while auth/current user id is transiently unavailable.
-      preservedJoined.add(cached);
-      continue;
-    }
-
-    final members =
-        (cached['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
-            const [];
-    final joinedFlag = cached['joined_by_current_user'] == true;
-    final joinedByCurrentUser = currentUserId.isNotEmpty &&
-        members.any((member) =>
-            member['user_id']?.toString() == currentUserId &&
-            member['status']?.toString() != 'cannot_attend');
-    final optimisticJoined = optimisticJoinedInviteIds.contains(id);
-
-    if (joinedFlag || joinedByCurrentUser || optimisticJoined) {
+    // For the same authenticated user, preserve missing cached items as well
+    // to avoid destructive drops from transient/partial backend responses.
+    if (currentUserId.isNotEmpty || isJoinedInvite(cached)) {
       preservedJoined.add(cached);
     }
   }

@@ -775,4 +775,279 @@ void main() {
         joinedList.items.map((it) => it['id']?.toString()).toList();
     expect(joinedIds, equals(['invite-b']));
   });
+
+  testWidgets('empty reload does not clear Andras or Tackat ja for same user',
+      (tester) async {
+    final appState = AppState();
+    appState.setLocale(const Locale('sv'));
+    const screenKey = ValueKey('invites-screen');
+
+    final initialInvites = <Map<String, dynamic>>[
+      {
+        'id': 'invite-other',
+        'host_user_id': 'host-a',
+        'activity': 'coffee',
+        'mode': 'one_to_one',
+        'max_participants': null,
+        'energy': 'medium',
+        'talk_level': 'low',
+        'duration': 30,
+        'meeting_time': DateTime(2026, 2, 7, 12, 0).toIso8601String(),
+        'place': 'Stadsparken',
+        'created_at': DateTime(2026, 2, 7, 9, 0).toIso8601String(),
+        'invite_members': <Map<String, dynamic>>[],
+        'accepted_count': 0,
+        'group_id': null,
+        'group_name': '',
+        'target_gender': 'all',
+        'age_min': 18,
+        'age_max': 80,
+        'host_display_name': 'Host A',
+      },
+      {
+        'id': 'invite-joined',
+        'host_user_id': 'host-b',
+        'activity': 'workout',
+        'mode': 'group',
+        'max_participants': 4,
+        'energy': 'medium',
+        'talk_level': 'low',
+        'duration': 45,
+        'meeting_time': DateTime(2026, 2, 7, 13, 0).toIso8601String(),
+        'place': 'Gymmet',
+        'created_at': DateTime(2026, 2, 7, 9, 30).toIso8601String(),
+        'invite_members': <Map<String, dynamic>>[
+          {'id': 'member-j', 'user_id': 'me', 'status': 'accepted'}
+        ],
+        'accepted_count': 1,
+        'group_id': null,
+        'group_name': '',
+        'target_gender': 'all',
+        'age_min': 18,
+        'age_max': 80,
+        'host_display_name': 'Host B',
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => initialInvites,
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => const [],
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Andras'));
+    await tester.pumpAndSettle();
+    var list = tester.widget<InviteList>(find.byType(InviteList).first);
+    var ids = list.items.map((it) => it['id']?.toString()).toList();
+    expect(ids, contains('invite-other'));
+
+    await tester.tap(find.text('Tackat ja'));
+    await tester.pumpAndSettle();
+    list = tester.widget<InviteList>(find.byType(InviteList).first);
+    ids = list.items.map((it) => it['id']?.toString()).toList();
+    expect(ids, contains('invite-joined'));
+  });
+
+  testWidgets('partial reload does not drop previously visible invites',
+      (tester) async {
+    final appState = AppState();
+    appState.setLocale(const Locale('sv'));
+    const screenKey = ValueKey('invites-screen-partial');
+
+    final full = <Map<String, dynamic>>[
+      {
+        'id': 'invite-a',
+        'host_user_id': 'host-a',
+        'activity': 'dinner',
+        'mode': 'one_to_one',
+        'max_participants': null,
+        'energy': 'medium',
+        'talk_level': 'low',
+        'duration': 60,
+        'meeting_time': DateTime(2026, 2, 7, 10, 0).toIso8601String(),
+        'place': 'A',
+        'created_at': DateTime(2026, 2, 7, 8, 0).toIso8601String(),
+        'invite_members': <Map<String, dynamic>>[],
+        'accepted_count': 0,
+        'group_id': null,
+        'group_name': '',
+        'target_gender': 'all',
+        'age_min': 18,
+        'age_max': 80,
+        'host_display_name': 'A',
+      },
+      {
+        'id': 'invite-b',
+        'host_user_id': 'host-b',
+        'activity': 'coffee',
+        'mode': 'one_to_one',
+        'max_participants': null,
+        'energy': 'medium',
+        'talk_level': 'low',
+        'duration': 30,
+        'meeting_time': DateTime(2026, 2, 7, 12, 0).toIso8601String(),
+        'place': 'B',
+        'created_at': DateTime(2026, 2, 7, 9, 0).toIso8601String(),
+        'invite_members': <Map<String, dynamic>>[],
+        'accepted_count': 0,
+        'group_id': null,
+        'group_name': '',
+        'target_gender': 'all',
+        'age_min': 18,
+        'age_max': 80,
+        'host_display_name': 'B',
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => full,
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => [full.first],
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final list = tester.widget<InviteList>(find.byType(InviteList).first);
+    final ids = list.items.map((it) => it['id']?.toString()).toList();
+    expect(ids, containsAll(['invite-a', 'invite-b']));
+  });
+
+  testWidgets('auth race reloads invites when testCurrentUserId appears',
+      (tester) async {
+    final appState = AppState();
+    appState.setLocale(const Locale('sv'));
+    const screenKey = ValueKey('invites-screen-auth-race');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: '',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => const [],
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvitesScreen(
+          key: screenKey,
+          appState: appState,
+          testCurrentUserId: 'me',
+          testCurrentUserMetadata: const {
+            'username': 'me',
+            'age': 30,
+            'gender': 'male',
+            'city': 'Linkoping',
+          },
+          testLoadInvites: () async => [
+            {
+              'id': 'invite-auth',
+              'host_user_id': 'host-a',
+              'activity': 'coffee',
+              'mode': 'one_to_one',
+              'max_participants': null,
+              'energy': 'medium',
+              'talk_level': 'low',
+              'duration': 30,
+              'meeting_time': DateTime(2026, 2, 7, 12, 0).toIso8601String(),
+              'place': 'Auth',
+              'created_at': DateTime(2026, 2, 7, 9, 0).toIso8601String(),
+              'invite_members': <Map<String, dynamic>>[],
+              'accepted_count': 0,
+              'group_id': null,
+              'group_name': '',
+              'target_gender': 'all',
+              'age_min': 18,
+              'age_max': 80,
+              'host_display_name': 'Host A',
+            }
+          ],
+          testJoinInvite: (_) async => null,
+          testLeaveInvite: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final list = tester.widget<InviteList>(find.byType(InviteList).first);
+    final ids = list.items.map((it) => it['id']?.toString()).toList();
+    expect(ids, contains('invite-auth'));
+  });
 }

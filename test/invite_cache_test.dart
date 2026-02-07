@@ -6,6 +6,7 @@ void main() {
     final cached = [
       {
         'id': 'invite-joined',
+        'host_user_id': 'host-1',
         'invite_members': [
           {'user_id': 'me', 'status': 'accepted'}
         ],
@@ -19,7 +20,8 @@ void main() {
       optimisticJoinedInviteIds: const {},
     );
 
-    expect(result, same(cached));
+    expect(result, hasLength(1));
+    expect(result.first['id'], 'invite-joined');
   });
 
   test('preserves cached joined invites missing from fresh data', () {
@@ -47,7 +49,7 @@ void main() {
     expect(ids, containsAll(['invite-open', 'invite-joined']));
   });
 
-  test('does not preserve cached invite not joined by current user', () {
+  test('preserves cached invite not joined by current user for same user', () {
     final fresh = [
       {'id': 'invite-open', 'invite_members': const []}
     ];
@@ -69,7 +71,7 @@ void main() {
     );
 
     final ids = result.map((invite) => invite['id']).toList();
-    expect(ids, equals(['invite-open']));
+    expect(ids, containsAll(['invite-open', 'invite-other']));
   });
 
   test('mergeInvitesById adds missing invite ids from extra list', () {
@@ -98,17 +100,21 @@ void main() {
     expect(result.first['place'], 'New');
   });
 
-  test('preserves missing cached invites when current user id is empty', () {
+  test('does not preserve unknown cache entries when current user id is empty', () {
     final fresh = [
       {'id': 'invite-open', 'invite_members': const []}
     ];
-    final cached = [
+    final cached = <Map<String, dynamic>>[
       {'id': 'invite-open', 'invite_members': const []},
       {
         'id': 'invite-joined',
         'invite_members': [
           {'user_id': 'me', 'status': 'accepted'}
         ],
+      },
+      {
+        'id': 'invite-other',
+        'invite_members': const [],
       },
     ];
 
@@ -120,7 +126,7 @@ void main() {
     );
 
     final ids = result.map((invite) => invite['id']).toList();
-    expect(ids, contains('invite-joined'));
+    expect(ids, equals(['invite-open']));
   });
 
   test('preserves missing cached invites via joined_by_current_user flag', () {
@@ -145,5 +151,24 @@ void main() {
 
     final ids = result.map((invite) => invite['id']).toList();
     expect(ids, contains('invite-joined'));
+  });
+
+  test('preserves my cached invites when fresh result is empty', () {
+    final cached = [
+      {
+        'id': 'invite-mine',
+        'host_user_id': 'me',
+        'invite_members': const [],
+      }
+    ];
+
+    final result = preserveInvitesWithCache(
+      freshInvites: const [],
+      cachedInvites: cached,
+      currentUserId: 'me',
+      optimisticJoinedInviteIds: const {},
+    );
+
+    expect(result.map((invite) => invite['id']).toList(), ['invite-mine']);
   });
 }

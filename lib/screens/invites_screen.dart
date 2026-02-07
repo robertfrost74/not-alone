@@ -62,12 +62,15 @@ class _InvitesScreenState extends State<InvitesScreen> {
   DateTime? _profilesLoadedAt;
   bool _offline = false;
   bool _loadingInvites = false;
+  bool _reloadQueued = false;
+  bool _joinedSyncDegraded = false;
   bool _realtimeFailed = false;
   Set<String> _blockedUserIds = {};
   Set<String> _favoriteUserIds = {};
   final Set<String> _optimisticJoinedInviteIds = {};
   final Map<String, String> _optimisticMemberIds = {};
   List<Map<String, dynamic>> _cachedInvites = [];
+  String _cachedInvitesUserId = '';
   String _stableCurrentUserId = '';
   static const Duration _profileCacheTtl = Duration(minutes: 5);
   final InvitesRepository _invitesRepository = InvitesRepository();
@@ -196,6 +199,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant InvitesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.testCurrentUserId != oldWidget.testCurrentUserId) {
+      _syncCurrentUserId(
+        candidateUserId: widget.testCurrentUserId,
+        reloadIfChanged: true,
+      );
+    }
+    if (!identical(widget.testLoadInvites, oldWidget.testLoadInvites)) {
+      _reloadInvites();
+    }
+  }
+
+  @override
   void dispose() {
     _clockTimer?.cancel();
     _realtimeDebounceTimer?.cancel();
@@ -210,7 +227,10 @@ class _InvitesScreenState extends State<InvitesScreen> {
 
   void _reloadInvites() {
     if (!mounted) return;
-    if (_loadingInvites) return;
+    if (_loadingInvites) {
+      _reloadQueued = true;
+      return;
+    }
     final tabIndex = _currentTabIndex();
     setState(() {
       _invitesFuture = _loadInvites();
@@ -236,6 +256,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
         .where((it) => it['id']?.toString() != inviteId)
         .toList(growable: false);
     _cachedInvites = next;
+    _cachedInvitesUserId = _effectiveCurrentUserId;
     if (!mounted) return;
     setState(() {
       _invitesFuture = Future.value(next);
@@ -274,6 +295,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       ..insert(0, normalized);
 
     _cachedInvites = next;
+    _cachedInvitesUserId = currentUserId;
     if (!mounted) return;
     setState(() {
       _invitesFuture = Future.value(next);
@@ -320,13 +342,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
     String? candidateUserId,
     required bool reloadIfChanged,
   }) {
-    final nextUserId = candidateUserId ?? _currentUserId;
-    if (nextUserId == null || nextUserId.isEmpty) return;
+    final nextUserId = candidateUserId ?? _currentUserId ?? '';
     if (nextUserId == _stableCurrentUserId) return;
     _stableCurrentUserId = nextUserId;
-    if (reloadIfChanged) {
-      _reloadInvites();
+    _cachedInvites = [];
+    _cachedInvitesUserId = '';
+    _optimisticJoinedInviteIds.clear();
+    _optimisticMemberIds.clear();
+    if (nextUserId.isEmpty) {
+      if (mounted) {
+        setState(() => _invitesFuture = Future.value(const []));
+      }
+      return;
     }
+    if (reloadIfChanged) _reloadInvites();
   }
 
   void _scheduleRealtimeReload() {
@@ -453,15 +482,20 @@ class _InvitesScreenState extends State<InvitesScreen> {
     _loadingInvites = true;
     try {
       final currentUserId = _effectiveCurrentUserId;
+      final cacheOwnedByCurrentUser = _cachedInvitesUserId.isEmpty ||
+          _cachedInvitesUserId == currentUserId;
+      final cacheForPreserve =
+          cacheOwnedByCurrentUser ? _cachedInvites : const <Map<String, dynamic>>[];
       if (widget.testLoadInvites != null) {
         final freshInvites = await widget.testLoadInvites!.call();
         final invites = preserveInvitesWithCache(
           freshInvites: freshInvites,
-          cachedInvites: _cachedInvites,
+          cachedInvites: cacheForPreserve,
           currentUserId: currentUserId,
           optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
         );
         _cachedInvites = invites;
+        _cachedInvitesUserId = currentUserId;
         return invites;
       }
       final firstFetch = await _invitesRepository.fetchOpenInvites(
@@ -484,7 +518,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
       }
       invites = preserveInvitesWithCache(
         freshInvites: invites,
-        cachedInvites: _cachedInvites,
+        cachedInvites: cacheForPreserve,
         currentUserId: currentUserId,
         optimisticJoinedInviteIds: _optimisticJoinedInviteIds,
       );
@@ -499,8 +533,31 @@ class _InvitesScreenState extends State<InvitesScreen> {
               extraInvites: joinedInvites,
             );
           }
+          if (_joinedSyncDegraded && mounted) {
+            setState(() => _joinedSyncDegraded = false);
+          } else {
+            _joinedSyncDegraded = false;
+          }
         } catch (_) {
-          // Keep page resilient if joined-invite query is unavailable.
+          final fallbackJoined = _cachedInvites.where((invite) {
+            if (invite['joined_by_current_user'] == true) return true;
+            if (invite['host_user_id']?.toString() == currentUserId) return true;
+            final members =
+                (invite['invite_members'] as List?)?.cast<Map<String, dynamic>>() ??
+                    const [];
+            return members.any((member) =>
+                member['user_id']?.toString() == currentUserId &&
+                member['status']?.toString() != 'cannot_attend');
+          }).toList(growable: false);
+          invites = mergeInvitesById(
+            baseInvites: invites,
+            extraInvites: fallbackJoined,
+          );
+          if (!_joinedSyncDegraded && mounted) {
+            setState(() => _joinedSyncDegraded = true);
+          } else {
+            _joinedSyncDegraded = true;
+          }
         }
       }
 
@@ -578,6 +635,7 @@ class _InvitesScreenState extends State<InvitesScreen> {
         return _cachedInvites;
       }
       _cachedInvites = invites;
+      _cachedInvitesUserId = currentUserId;
       return invites;
     } catch (e) {
       if (mounted) {
@@ -587,6 +645,13 @@ class _InvitesScreenState extends State<InvitesScreen> {
       return [];
     } finally {
       _loadingInvites = false;
+      if (_reloadQueued && mounted) {
+        _reloadQueued = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _reloadInvites();
+        });
+      }
     }
   }
 
@@ -1921,6 +1986,28 @@ class _InvitesScreenState extends State<InvitesScreen> {
                                   'Offline. Försöker ansluta…')
                               : _t('Live updates unavailable',
                                   'Live-uppdatering avstängd'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (_joinedSyncDegraded) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber),
+                        ),
+                        child: Text(
+                          _t(
+                            'Joined invites may be delayed. Showing cached joined data.',
+                            'Tackat ja kan vara fördröjda. Visar cachad data tillfälligt.',
+                          ),
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
